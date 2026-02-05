@@ -378,22 +378,33 @@ export async function POST(req: NextRequest) {
             lineitems_attributes: order.line_items.map((item: any) => {
                 const qty = parseInt(item.quantity);
                 const variant = (item.variant_title || "").toUpperCase();
-                const sizeMapping: any = {};
-
-                // Splitting "Sand / M / Design" to find the size
                 const parts = variant.split('/').map((p: string) => p.trim());
-                if (parts.includes("2XL")) sizeMapping.size_2xl_qty = qty;
+
+                // Initialize all size columns as null or 0
+                const sizeMapping: any = {
+                    size_s_qty: null,
+                    size_m_qty: null,
+                    size_l_qty: null,
+                    size_xl_qty: null,
+                    size_2xl_qty: null
+                };
+
+                // Explicitly map the Shopify quantity to the Printavo column
+                if (parts.includes("2XL") || parts.includes("XXL")) sizeMapping.size_2xl_qty = qty;
                 else if (parts.includes("XL")) sizeMapping.size_xl_qty = qty;
                 else if (parts.includes("L")) sizeMapping.size_l_qty = qty;
                 else if (parts.includes("M")) sizeMapping.size_m_qty = qty;
                 else if (parts.includes("S")) sizeMapping.size_s_qty = qty;
                 else if (parts.includes("XS")) sizeMapping.size_xs_qty = qty;
 
+                // Extract Color from variant (e.g., "Royal" or "Navy")
+                const colorValue = parts[0] || "";
+
                 return {
                     style_description: `${item.title} - ${item.variant_title}`,
                     unit_cost: parseFloat(item.price),
-                    total_quantities: qty,
-                    ...sizeMapping,
+                    color: colorValue, // This fills the 'Color' column in Printavo
+                    ...sizeMapping,    // This fills the XS, S, M, L, XL, 2XL columns
                     images_attributes: item.properties
                         ?.filter((p: any) => p.value?.toString().includes("http"))
                         .map((p: any) => ({ file_url: p.value, mime_type: "image/png" })) || []
