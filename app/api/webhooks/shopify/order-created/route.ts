@@ -18,7 +18,7 @@
 //             method: "POST",
 //             headers: { "Content-Type": "application/json" },
 //             body: JSON.stringify({
-//                 email: "mehrab367@gmail.com",
+//                 email: "aurixlab@gmail.com",
 //                 password: process.env.PRINTAVO_PASSWORD
 //             })
 //         });
@@ -36,7 +36,7 @@
 //             phone: order.phone || ""
 //         };
 
-//         const custRes = await fetch(`https://www.printavo.com/api/v1/customers?email=mehrab367@gmail.com&token=${token}`, {
+//         const custRes = await fetch(`https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}`, {
 //             method: "POST",
 //             headers: { "Content-Type": "application/json" },
 //             body: JSON.stringify(customerPayload)
@@ -116,7 +116,7 @@
 //             })
 //         };
 
-//         const orderRes = await fetch(`https://www.printavo.com/api/v1/orders?email=mehrab367@gmail.com&token=${token}`, {
+//         const orderRes = await fetch(`https://www.printavo.com/api/v1/orders?email=aurixlab@gmail.com&token=${token}`, {
 //             method: "POST",
 //             headers: {
 //                 "Content-Type": "application/json",
@@ -139,6 +139,151 @@
 //     }
 // }
 
+// import crypto from "crypto";
+// import fetch from "node-fetch";
+// import { NextRequest, NextResponse } from "next/server";
+
+// export async function POST(req: NextRequest) {
+//     const body = await req.text();
+//     const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
+
+//     const hash = crypto.createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET!).update(body, "utf8").digest("base64");
+//     if (hash !== hmac) return new NextResponse("Unauthorized", { status: 401 });
+
+//     const order = JSON.parse(body);
+//     console.log("📦 NEW SHOPIFY ORDER RECEIVED:: ", order);
+
+//     try {
+//         // --- STEP 1: LOGIN TO PRINTAVO ---
+//         const loginRes = await fetch("https://www.printavo.com/api/v1/sessions", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//                 email: "aurixlab@gmail.com",
+//                 password: process.env.PRINTAVO_PASSWORD
+//             })
+//         });
+//         const loginData: any = await loginRes.json();
+//         const token = loginData.token;
+//         const userId = loginData.id;
+
+//         // RUN THIS ONCE TO SEE YOUR STATUS IDs IN THE CONSOLE
+//         const statusRes = await fetch(`https://www.printavo.com/api/v1/orderstatuses?email=aurixlab@gmail.com&token=${token}`);
+//         const statuses: any = await statusRes.json();
+//         console.log("📊 PRINTAVO STATUS LIST:", statuses);
+//         // --- STEP 2: SEARCH/CREATE CUSTOMER (STRICT MATCH) ---
+//         let customerId: number;
+//         const shopifyEmail = (order.email || order.customer?.email || "").toLowerCase();
+//         const customerPhone = order.customer?.phone || order.billing_address?.phone || order.phone || "";
+
+//         const searchRes = await fetch(
+//             `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}&query=${shopifyEmail}`,
+//             { method: "GET" }
+//         );
+//         const searchData: any = await searchRes.json();
+
+//         // STRICT FILTER: Only accept a match where the email is identical
+//         const existingCustomer = searchData.data?.find((c: any) => c.email.toLowerCase() === shopifyEmail);
+
+//         if (existingCustomer) {
+//             customerId = existingCustomer.id;
+//             console.log(`✅ MATCHED EXISTING CUSTOMER: ${customerId} (${existingCustomer.first_name} ${existingCustomer.last_name})`);
+//         } else {
+//             const customerPayload = {
+//                 user_id: userId,
+//                 first_name: order.customer?.first_name || "Shopify",
+//                 last_name: order.customer?.last_name || "Customer",
+//                 company: order.billing_address?.company || "Individual",
+//                 customer_email: shopifyEmail,
+//                 phone: customerPhone
+//             };
+
+//             const custRes = await fetch(`https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}`, {
+//                 method: "POST",
+//                 headers: { "Content-Type": "application/json" },
+//                 body: JSON.stringify(customerPayload)
+//             });
+//             const newCust = await custRes.json() as { id: number };
+//             customerId = newCust.id;
+//             console.log(`✅ NEW CUSTOMER CREATED: ${customerId}`);
+//         }
+
+//         // --- STEP 3: CALGARY DELIVERY LOGIC (11 AM CUTOFF) ---
+//         const calgaryTimeStr = new Intl.DateTimeFormat("en-US", {
+//             timeZone: "America/Denver",
+//             hour: "numeric",
+//             hour12: false
+//         }).format(new Date());
+
+//         const currentHour = parseInt(calgaryTimeStr);
+//         let deliveryDate = new Date();
+//         // If 11:00 AM or later in Calgary, set to tomorrow
+//         if (currentHour >= 11) deliveryDate.setDate(deliveryDate.getDate() + 1);
+//         const formattedDueDate = deliveryDate.toLocaleDateString('en-US');
+
+//         // Pickup vs Shipping
+//         const isPickup = !order.shipping_address;
+//         const addressSource = order.shipping_address || order.billing_address;
+
+//         // --- STEP 4: ORDER PAYLOAD WITH SIZES ---
+//         const orderPayload = {
+//             user_id: userId,
+//             customer_id: customerId,
+//             orderstatus_id: 1,
+//             visual_id: order.order_number.toString(),
+//             notes: `Shopify Order #${order.order_number}.${isPickup ? ' [PICKUP]' : ''} Total Discount: ${order.total_discounts}`,
+//             formatted_due_date: formattedDueDate,
+//             formatted_customer_due_date: formattedDueDate,
+//             order_addresses_attributes: [{
+//                 address1: addressSource?.address1 || (isPickup ? "LOCAL PICKUP" : ""),
+//                 city: addressSource?.city || "",
+//                 state: addressSource?.province || "",
+//                 zip: addressSource?.zip || "",
+//                 country: addressSource?.country_code || "CA"
+//             }],
+//             lineitems_attributes: order.line_items.map((item: any) => {
+//                 const qty = parseInt(item.quantity);
+//                 const variant = (item.variant_title || "").toUpperCase();
+
+//                 // Helper to map sizes so they populate the XS/S/M/L/XL boxes
+//                 const sizeMapping: any = {};
+//                 if (variant.includes("2XL")) sizeMapping.size_2xl_qty = qty;
+//                 else if (variant.includes("XL")) sizeMapping.size_xl_qty = qty;
+//                 else if (variant.includes(" L ") || variant.endsWith(" L") || variant === "L") sizeMapping.size_l_qty = qty;
+//                 else if (variant.includes(" M ") || variant.endsWith(" M") || variant === "M") sizeMapping.size_m_qty = qty;
+//                 else if (variant.includes(" S ") || variant.endsWith(" S") || variant === "S") sizeMapping.size_s_qty = qty;
+//                 else if (variant.includes("XS")) sizeMapping.size_xs_qty = qty;
+
+//                 return {
+//                     style_description: `${item.title} - ${item.variant_title}`,
+//                     unit_cost: parseFloat(item.price),
+//                     total_quantities: qty,
+//                     ...sizeMapping, // Spreads size_xl_qty: 1, etc.
+//                     images_attributes: item.properties
+//                         ? item.properties
+//                             .filter((p: any) => p.value && typeof p.value === 'string' && p.value.includes("http"))
+//                             .map((p: any) => ({ file_url: p.value, mime_type: "image/png" }))
+//                         : []
+//                 };
+//             })
+//         };
+
+//         const orderRes = await fetch(`https://www.printavo.com/api/v1/orders?email=aurixlab@gmail.com&token=${token}`, {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json", "Accept": "application/json" },
+//             body: JSON.stringify(orderPayload)
+//         });
+
+//         if (!orderRes.ok) return new NextResponse(await orderRes.text(), { status: 400 });
+
+//         return NextResponse.json({ success: true });
+//     } catch (error) {
+//         console.error(error);
+//         return new NextResponse("System Error", { status: 500 });
+//     }
+// }
+
+
 import crypto from "crypto";
 import fetch from "node-fetch";
 import { NextRequest, NextResponse } from "next/server";
@@ -151,83 +296,76 @@ export async function POST(req: NextRequest) {
     if (hash !== hmac) return new NextResponse("Unauthorized", { status: 401 });
 
     const order = JSON.parse(body);
-    console.log("📦 NEW SHOPIFY ORDER RECEIVED:: ", order);
 
     try {
-        // --- STEP 1: LOGIN TO PRINTAVO ---
+        // --- STEP 1: LOGIN ---
         const loginRes = await fetch("https://www.printavo.com/api/v1/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                email: "aurixlab@gmail.com",
-                password: process.env.PRINTAVO_PASSWORD
-            })
+            body: JSON.stringify({ email: "aurixlab@gmail.com", password: process.env.PRINTAVO_PASSWORD })
         });
         const loginData: any = await loginRes.json();
         const token = loginData.token;
-        const userId = loginData.id;
+        const myUserId = loginData.id;
 
-        // --- STEP 2: SEARCH/CREATE CUSTOMER (STRICT MATCH) ---
-        let customerId: number;
-        const shopifyEmail = (order.email || order.customer?.email || "").toLowerCase();
-        const customerPhone = order.customer?.phone || order.billing_address?.phone || order.phone || "";
+        // --- STEP 2: STRICT CUSTOMER MATCH ---
+        let targetCustomerId: number | null = null;
+        const shopifyEmail = (order.email || order.customer?.email || "").toLowerCase().trim();
 
         const searchRes = await fetch(
             `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}&query=${shopifyEmail}`,
             { method: "GET" }
         );
         const searchData: any = await searchRes.json();
+        // searchData.data is the actual array
+        const matchedCust = searchData.data?.find((c: any) => c.email.toLowerCase().trim() === shopifyEmail);
 
-        // STRICT FILTER: Only accept a match where the email is identical
-        const existingCustomer = searchData.data?.find((c: any) => c.email.toLowerCase() === shopifyEmail);
-
-        if (existingCustomer) {
-            customerId = existingCustomer.id;
-            console.log(`✅ MATCHED EXISTING CUSTOMER: ${customerId} (${existingCustomer.first_name} ${existingCustomer.last_name})`);
+        if (matchedCust) {
+            targetCustomerId = matchedCust.id;
         } else {
             const customerPayload = {
-                user_id: userId,
+                user_id: myUserId,
                 first_name: order.customer?.first_name || "Shopify",
                 last_name: order.customer?.last_name || "Customer",
-                company: order.billing_address?.company || "Individual",
                 customer_email: shopifyEmail,
-                phone: customerPhone
+                phone: order.billing_address?.phone || ""
             };
-
             const custRes = await fetch(`https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(customerPayload)
             });
-            const newCust = await custRes.json() as { id: number };
-            customerId = newCust.id;
-            console.log(`✅ NEW CUSTOMER CREATED: ${customerId}`);
+            const newCust: any = await custRes.json();
+            targetCustomerId = newCust.id;
         }
 
-        // --- STEP 3: CALGARY DELIVERY LOGIC (11 AM CUTOFF) ---
+        // --- STEP 3: CALGARY TIME & STATUS LOGIC ---
         const calgaryTimeStr = new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/Denver",
-            hour: "numeric",
-            hour12: false
+            timeZone: "America/Denver", hour: "numeric", hour12: false
         }).format(new Date());
 
         const currentHour = parseInt(calgaryTimeStr);
         let deliveryDate = new Date();
-        // If 11:00 AM or later in Calgary, set to tomorrow
         if (currentHour >= 11) deliveryDate.setDate(deliveryDate.getDate() + 1);
         const formattedDueDate = deliveryDate.toLocaleDateString('en-US');
 
-        // Pickup vs Shipping
+        // Status IDs from your printed list
+        const RUSH_STATUS_ID = 134404; // 📦ORDER ITEMS **RUSH**
+        const QUOTE_STATUS_ID = 22634;  // Quote
+
+        const isRush = order.shipping_lines?.some((s: any) => s.title.includes("Calgary Location"));
+        const finalStatusId = isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID;
+
+        // --- STEP 4: CREATE ORDER PAYLOAD ---
         const isPickup = !order.shipping_address;
         const addressSource = order.shipping_address || order.billing_address;
 
-        // --- STEP 4: ORDER PAYLOAD WITH SIZES ---
         const orderPayload = {
-            user_id: userId,
-            customer_id: customerId,
-            orderstatus_id: 1,
+            user_id: myUserId,
+            customer_id: targetCustomerId,
+            orderstatus_id: finalStatusId, // Status set at creation
             visual_id: order.order_number.toString(),
-            notes: `Shopify Order #${order.order_number}.${isPickup ? ' [PICKUP]' : ''} Total Discount: ${order.total_discounts}`,
+            notes: `Shopify Order #${order.order_number}.${isRush ? ' [RUSH]' : ''}${isPickup ? ' [PICKUP]' : ''}`,
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
             order_addresses_attributes: [{
@@ -240,33 +378,32 @@ export async function POST(req: NextRequest) {
             lineitems_attributes: order.line_items.map((item: any) => {
                 const qty = parseInt(item.quantity);
                 const variant = (item.variant_title || "").toUpperCase();
-
-                // Helper to map sizes so they populate the XS/S/M/L/XL boxes
                 const sizeMapping: any = {};
-                if (variant.includes("2XL")) sizeMapping.size_2xl_qty = qty;
-                else if (variant.includes("XL")) sizeMapping.size_xl_qty = qty;
-                else if (variant.includes(" L ") || variant.endsWith(" L") || variant === "L") sizeMapping.size_l_qty = qty;
-                else if (variant.includes(" M ") || variant.endsWith(" M") || variant === "M") sizeMapping.size_m_qty = qty;
-                else if (variant.includes(" S ") || variant.endsWith(" S") || variant === "S") sizeMapping.size_s_qty = qty;
-                else if (variant.includes("XS")) sizeMapping.size_xs_qty = qty;
+
+                // Splitting "Sand / M / Design" to find the size
+                const parts = variant.split('/').map((p: string) => p.trim());
+                if (parts.includes("2XL")) sizeMapping.size_2xl_qty = qty;
+                else if (parts.includes("XL")) sizeMapping.size_xl_qty = qty;
+                else if (parts.includes("L")) sizeMapping.size_l_qty = qty;
+                else if (parts.includes("M")) sizeMapping.size_m_qty = qty;
+                else if (parts.includes("S")) sizeMapping.size_s_qty = qty;
+                else if (parts.includes("XS")) sizeMapping.size_xs_qty = qty;
 
                 return {
                     style_description: `${item.title} - ${item.variant_title}`,
                     unit_cost: parseFloat(item.price),
                     total_quantities: qty,
-                    ...sizeMapping, // Spreads size_xl_qty: 1, etc.
+                    ...sizeMapping,
                     images_attributes: item.properties
-                        ? item.properties
-                            .filter((p: any) => p.value && typeof p.value === 'string' && p.value.includes("http"))
-                            .map((p: any) => ({ file_url: p.value, mime_type: "image/png" }))
-                        : []
+                        ?.filter((p: any) => p.value?.toString().includes("http"))
+                        .map((p: any) => ({ file_url: p.value, mime_type: "image/png" })) || []
                 };
             })
         };
 
         const orderRes = await fetch(`https://www.printavo.com/api/v1/orders?email=aurixlab@gmail.com&token=${token}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(orderPayload)
         });
 
@@ -275,6 +412,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error(error);
-        return new NextResponse("System Error", { status: 500 });
+        return new NextResponse("Error", { status: 500 });
     }
 }
