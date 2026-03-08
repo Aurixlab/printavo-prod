@@ -238,18 +238,34 @@ export async function POST(req: NextRequest) {
         // STEP 3: DELIVERY DATE LOGIC
         // -----------------------------
 
-        const calgaryTimeStr = new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/Denver",
-            hour: "numeric",
-            hour12: false
-        }).format(new Date());
+        const calgaryNow = new Date(
+            new Date().toLocaleString("en-US", { timeZone: "America/Denver" })
+        );
 
-        const currentHour = parseInt(calgaryTimeStr);
+        const currentHour = calgaryNow.getHours();
+        const day = calgaryNow.getDay(); // 0=Sun 1=Mon ... 6=Sat
 
-        let deliveryDate = new Date();
+        let deliveryDate = new Date(calgaryNow);
 
-        if (currentHour >= 11) {
+        // --- WEEKEND RULE ---
+        if (day === 6) {
+            // Saturday → Monday
+            deliveryDate.setDate(deliveryDate.getDate() + 2);
+        }
+        else if (day === 0) {
+            // Sunday → Monday
             deliveryDate.setDate(deliveryDate.getDate() + 1);
+        }
+        else {
+            // Weekday rule
+            if (currentHour >= 11) {
+                deliveryDate.setDate(deliveryDate.getDate() + 1);
+            }
+
+            // If next day lands on weekend → push to Monday
+            const nextDay = deliveryDate.getDay();
+            if (nextDay === 6) deliveryDate.setDate(deliveryDate.getDate() + 2);
+            if (nextDay === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
         }
 
         const formattedDueDate = deliveryDate.toLocaleDateString("en-US");
