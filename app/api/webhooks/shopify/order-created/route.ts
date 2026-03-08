@@ -294,17 +294,20 @@ export async function POST(req: NextRequest) {
                     unit_cost: parseFloat(item.price),
                     color: color,
 
-                    size_s_qty: 0,
-                    size_m_qty: 0,
-                    size_l_qty: 0,
-                    size_xl_qty: 0,
-                    size_2xl_qty: 0,
+                    size_xs: 0,
+                    size_s: 0,
+                    size_m: 0,
+                    size_l: 0,
+                    size_xl: 0,
+                    size_2xl: 0,
+                    size_3xl: 0,
+                    size_4xl: 0,
+                    size_5xl: 0,
+                    size_6xl: 0,
 
                     images_attributes:
                         item.properties
-                            ?.filter((p: any) =>
-                                p.value?.toString().includes("http")
-                            )
+                            ?.filter((p: any) => p.value?.toString().includes("http"))
                             .map((p: any) => ({
                                 file_url: p.value,
                                 mime_type: "image/png"
@@ -312,12 +315,16 @@ export async function POST(req: NextRequest) {
                 };
             }
 
-            if (size === "S") groupedItems[groupKey].size_s_qty += qty;
-            else if (size === "M") groupedItems[groupKey].size_m_qty += qty;
-            else if (size === "L") groupedItems[groupKey].size_l_qty += qty;
-            else if (size === "XL") groupedItems[groupKey].size_xl_qty += qty;
-            else if (size === "2XL" || size === "XXL")
-                groupedItems[groupKey].size_2xl_qty += qty;
+            if (size === "XS") groupedItems[groupKey].size_xs += qty;
+            else if (size === "S") groupedItems[groupKey].size_s += qty;
+            else if (size === "M") groupedItems[groupKey].size_m += qty;
+            else if (size === "L") groupedItems[groupKey].size_l += qty;
+            else if (size === "XL") groupedItems[groupKey].size_xl += qty;
+            else if (size === "2XL" || size === "XXL") groupedItems[groupKey].size_2xl += qty;
+            else if (size === "3XL") groupedItems[groupKey].size_3xl += qty;
+            else if (size === "4XL") groupedItems[groupKey].size_4xl += qty;
+            else if (size === "5XL") groupedItems[groupKey].size_5xl += qty;
+            else if (size === "6XL") groupedItems[groupKey].size_6xl += qty;
 
         });
 
