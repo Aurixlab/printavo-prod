@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
     }
 
     const order = JSON.parse(body);
-    console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order.order_number);
+    console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order);
 
     try {
 
