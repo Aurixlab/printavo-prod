@@ -724,20 +724,19 @@ export async function POST(req: NextRequest) {
 
             const { error: itemError } = await supabase
                 .from("order_items")
-                .insert({
-
-                    order_id: orderId,
-
-                    product_id: item.product_id,
-                    product_name: item.title,
-
-                    color,
-                    size,
-
-                    quantity: item.quantity,
-                    price: item.price
-
-                });
+                .upsert(
+                    {
+                        shopify_line_item_id: item.id,
+                        order_id: orderId,
+                        product_id: item.product_id,
+                        product_name: item.title,
+                        color,
+                        size,
+                        quantity: item.quantity,
+                        price: item.price
+                    },
+                    { onConflict: "shopify_line_item_id" }
+                );
 
             if (itemError) {
 
