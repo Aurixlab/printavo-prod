@@ -261,6 +261,291 @@
 //         return new NextResponse("Error", { status: 500 });
 //     }
 // }
+//LAst DEPLOYMENT
+// import crypto from "crypto";
+// import fetch from "node-fetch";
+// import { NextRequest, NextResponse } from "next/server";
+// import { createClient } from "@supabase/supabase-js";
+
+// const supabase = createClient(
+//     process.env.SUPABASE_URL!,
+//     process.env.SUPABASE_SERVICE_ROLE_KEY!
+// );
+
+// export async function POST(req: NextRequest) {
+
+//     const body = await req.text();
+//     const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
+
+//     const hash = crypto
+//         .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET!)
+//         .update(body, "utf8")
+//         .digest("base64");
+
+//     if (hash !== hmac) {
+//         return new NextResponse("Unauthorized", { status: 401 });
+//     }
+
+//     const order = JSON.parse(body);
+//     console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order);
+
+//     try {
+
+//         // ------------------------------------------------
+//         // STEP 0: CHECK IF SANMAR ORDER
+//         // ------------------------------------------------
+
+//         const isSanmar = order.line_items.some(
+//             (item: any) => item.vendor?.toLowerCase() === "Sanmar"
+//         );
+
+//         // ------------------------------------------------
+//         // STEP 1: WEBSTORE ORDER → STORE IN SUPABASE
+//         // ------------------------------------------------
+
+//         if (!isSanmar) {
+
+//             console.log("🧾 Webstore order detected. Aggregating in DB");
+
+//             for (const item of order.line_items) {
+
+//                 const variant = (item.variant_title || "").toUpperCase();
+//                 const parts = variant.split("/").map((p: string) => p.trim());
+//                 console.log("Processing item:", item);
+//                 console.log("Variant parts:", parts);
+//                 console.log("Product ID:", variant);
+//                 const color = parts[0] || "Unknown";
+//                 const size = parts[1] || "UNKNOWN";
+
+//                 const { data } = await supabase
+//                     .from("webstore_orders")
+//                     .select("*")
+//                     .eq("collection_handle", order.tags || "webstore")
+//                     .eq("product_id", item.product_id)
+//                     .eq("color", color)
+//                     .eq("size", size)
+//                     .single();
+
+//                 if (data) {
+
+//                     await supabase
+//                         .from("webstore_orders")
+//                         .update({
+//                             quantity: data.quantity + item.quantity
+//                         })
+//                         .eq("id", data.id);
+
+//                 } else {
+
+//                     await supabase
+//                         .from("webstore_orders")
+//                         .insert({
+//                             collection_handle: order.tags || "webstore",
+//                             product_id: item.product_id,
+//                             product_name: item.title,
+//                             color,
+//                             size,
+//                             quantity: item.quantity
+//                         });
+
+//                 }
+
+//             }
+
+//             return NextResponse.json({ stored: true });
+
+//         }
+
+//         console.log("🏭 SanMar order → sending to Printavo");
+
+//         // ------------------------------------------------
+//         // STEP 2: LOGIN TO PRINTAVO
+//         // ------------------------------------------------
+
+//         const loginRes = await fetch("https://www.printavo.com/api/v1/sessions", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//                 email: "aurixlab@gmail.com",
+//                 password: process.env.PRINTAVO_PASSWORD
+//             })
+//         });
+
+//         const loginData: any = await loginRes.json();
+//         const token = loginData.token;
+//         const myUserId = loginData.id;
+
+//         // ------------------------------------------------
+//         // STEP 3: FIND OR CREATE CUSTOMER
+//         // ------------------------------------------------
+
+//         const shopifyEmail = (order.email || order.customer?.email || "")
+//             .toLowerCase()
+//             .trim();
+
+//         let targetCustomerId: number | null = null;
+
+//         const searchRes = await fetch(
+//             `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}&query=${encodeURIComponent(shopifyEmail)}`
+//         );
+
+//         const searchData: any = await searchRes.json();
+
+//         const matchedCust = searchData.data?.find(
+//             (c: any) => c.email?.toLowerCase().trim() === shopifyEmail
+//         );
+
+//         if (matchedCust) {
+
+//             targetCustomerId = matchedCust.id;
+
+//         } else {
+
+//             const custRes = await fetch(
+//                 `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}`,
+//                 {
+//                     method: "POST",
+//                     headers: { "Content-Type": "application/json" },
+//                     body: JSON.stringify({
+//                         user_id: myUserId,
+//                         first_name: order.customer?.first_name || "Shopify",
+//                         last_name: order.customer?.last_name || "Customer",
+//                         customer_email: shopifyEmail
+//                     })
+//                 }
+//             );
+
+//             const newCust: any = await custRes.json();
+//             targetCustomerId = newCust.id;
+
+//         }
+
+//         // ------------------------------------------------
+//         // STEP 4: DELIVERY DATE (CALGARY TIME)
+//         // ------------------------------------------------
+
+//         const calgaryNow = new Date(
+//             new Date().toLocaleString("en-US", { timeZone: "America/Denver" })
+//         );
+
+//         const hour = calgaryNow.getHours();
+//         const day = calgaryNow.getDay();
+
+//         let deliveryDate = new Date(calgaryNow);
+
+//         if (day === 6) deliveryDate.setDate(deliveryDate.getDate() + 2);
+//         else if (day === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
+//         else {
+//             if (hour >= 11) deliveryDate.setDate(deliveryDate.getDate() + 1);
+//             const nextDay = deliveryDate.getDay();
+//             if (nextDay === 6) deliveryDate.setDate(deliveryDate.getDate() + 2);
+//             if (nextDay === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
+//         }
+
+//         const formattedDueDate = deliveryDate.toLocaleDateString("en-US");
+
+//         // ------------------------------------------------
+//         // STEP 5: GROUP ITEMS
+//         // ------------------------------------------------
+
+//         const groupedItems: Record<string, any> = {};
+
+//         order.line_items.forEach((item: any) => {
+
+//             const variant = (item.variant_title || "").toUpperCase();
+//             const parts = variant.split("/").map((p: string) => p.trim());
+
+//             const color = parts[0] || "Unknown";
+//             const size = parts[1] || "";
+
+//             const groupKey = `${item.product_id}-${color}`;
+
+//             if (!groupedItems[groupKey]) {
+
+//                 groupedItems[groupKey] = {
+//                     style_description: item.title,
+//                     unit_cost: parseFloat(item.price),
+//                     color,
+
+//                     size_s: 0,
+//                     size_m: 0,
+//                     size_l: 0,
+//                     size_xl: 0,
+//                     size_2xl: 0,
+
+//                     images_attributes:
+//                         item.properties
+//                             ?.filter((p: any) => p.value?.toString().includes("http"))
+//                             .map((p: any) => ({
+//                                 file_url: p.value,
+//                                 mime_type: "image/png"
+//                             })) || []
+//                 };
+
+//             }
+
+//             if (size === "S") groupedItems[groupKey].size_s += item.quantity;
+//             if (size === "M") groupedItems[groupKey].size_m += item.quantity;
+//             if (size === "L") groupedItems[groupKey].size_l += item.quantity;
+//             if (size === "XL") groupedItems[groupKey].size_xl += item.quantity;
+//             if (size === "2XL") groupedItems[groupKey].size_2xl += item.quantity;
+
+//         });
+
+//         const lineitems_attributes = Object.values(groupedItems);
+
+//         // ------------------------------------------------
+//         // STEP 6: CREATE PRINTAVO ORDER
+//         // ------------------------------------------------
+
+//         const orderPayload = {
+
+//             user_id: myUserId,
+//             customer_id: targetCustomerId,
+
+//             visual_id: order.order_number.toString(),
+
+//             formatted_due_date: formattedDueDate,
+//             formatted_customer_due_date: formattedDueDate,
+
+//             notes: `Shopify Order #${order.order_number}`,
+
+//             lineitems_attributes
+
+//         };
+
+//         const orderRes = await fetch(
+//             `https://www.printavo.com/api/v1/orders?email=aurixlab@gmail.com&token=${token}`,
+//             {
+//                 method: "POST",
+//                 headers: { "Content-Type": "application/json" },
+//                 body: JSON.stringify(orderPayload)
+//             }
+//         );
+
+//         if (!orderRes.ok) {
+
+//             const err = await orderRes.text();
+//             console.error("❌ Printavo error:", err);
+
+//             return new NextResponse(err, { status: 400 });
+
+//         }
+
+//         console.log("✅ Printavo order created");
+
+//         return NextResponse.json({ success: true });
+
+//     } catch (error) {
+
+//         console.error("❌ Webhook error:", error);
+
+//         return new NextResponse("Server Error", { status: 500 });
+
+//     }
+
+// }
+
 
 import crypto from "crypto";
 import fetch from "node-fetch";
@@ -271,6 +556,32 @@ const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+function parseVariant(variant: string) {
+
+    const parts = (variant || "")
+        .toUpperCase()
+        .split("/")
+        .map((p: string) => p.trim());
+
+    const sizeList = ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL", "5XL"];
+
+    let size = "UNKNOWN";
+    let color = "N/A";
+
+    for (const part of parts) {
+
+        if (sizeList.includes(part)) {
+            size = part;
+        }
+        else if (!part.includes("DESIGN")) {
+            color = part;
+        }
+
+    }
+
+    return { size, color };
+}
 
 export async function POST(req: NextRequest) {
 
@@ -287,6 +598,7 @@ export async function POST(req: NextRequest) {
     }
 
     const order = JSON.parse(body);
+
     console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order);
 
     try {
@@ -296,7 +608,7 @@ export async function POST(req: NextRequest) {
         // ------------------------------------------------
 
         const isSanmar = order.line_items.some(
-            (item: any) => item.vendor?.toLowerCase() === "Sanmar"
+            (item: any) => item.vendor?.toLowerCase() === "sanmar"
         );
 
         // ------------------------------------------------
@@ -309,18 +621,18 @@ export async function POST(req: NextRequest) {
 
             for (const item of order.line_items) {
 
-                const variant = (item.variant_title || "").toUpperCase();
-                const parts = variant.split("/").map((p: string) => p.trim());
-                console.log("Processing item:", item);
-                console.log("Variant parts:", parts);
-                console.log("Product ID:", variant);
-                const color = parts[0] || "Unknown";
-                const size = parts[1] || "UNKNOWN";
+                const { size, color } = parseVariant(item.variant_title);
+
+                const vendorHandle = item.vendor
+                    ?.toLowerCase()
+                    .replace(/\s+/g, "-");
+
+                const collectionHandle = vendorHandle || "webstore";
 
                 const { data } = await supabase
                     .from("webstore_orders")
                     .select("*")
-                    .eq("collection_handle", order.tags || "webstore")
+                    .eq("collection_handle", collectionHandle)
                     .eq("product_id", item.product_id)
                     .eq("color", color)
                     .eq("size", size)
@@ -340,7 +652,7 @@ export async function POST(req: NextRequest) {
                     await supabase
                         .from("webstore_orders")
                         .insert({
-                            collection_handle: order.tags || "webstore",
+                            collection_handle: collectionHandle,
                             product_id: item.product_id,
                             product_name: item.title,
                             color,
@@ -349,6 +661,10 @@ export async function POST(req: NextRequest) {
                         });
 
                 }
+
+                console.log(
+                    `Stored → ${collectionHandle} | ${item.title} | ${color} | ${size}`
+                );
 
             }
 
@@ -372,6 +688,7 @@ export async function POST(req: NextRequest) {
         });
 
         const loginData: any = await loginRes.json();
+
         const token = loginData.token;
         const myUserId = loginData.id;
 
@@ -445,24 +762,21 @@ export async function POST(req: NextRequest) {
         const formattedDueDate = deliveryDate.toLocaleDateString("en-US");
 
         // ------------------------------------------------
-        // STEP 5: GROUP ITEMS
+        // STEP 5: GROUP ITEMS FOR PRINTAVO
         // ------------------------------------------------
 
         const groupedItems: Record<string, any> = {};
 
         order.line_items.forEach((item: any) => {
 
-            const variant = (item.variant_title || "").toUpperCase();
-            const parts = variant.split("/").map((p: string) => p.trim());
-
-            const color = parts[0] || "Unknown";
-            const size = parts[1] || "";
+            const { size, color } = parseVariant(item.variant_title);
 
             const groupKey = `${item.product_id}-${color}`;
 
             if (!groupedItems[groupKey]) {
 
                 groupedItems[groupKey] = {
+
                     style_description: item.title,
                     unit_cost: parseFloat(item.price),
                     color,
@@ -480,6 +794,7 @@ export async function POST(req: NextRequest) {
                                 file_url: p.value,
                                 mime_type: "image/png"
                             })) || []
+
                 };
 
             }
@@ -488,7 +803,7 @@ export async function POST(req: NextRequest) {
             if (size === "M") groupedItems[groupKey].size_m += item.quantity;
             if (size === "L") groupedItems[groupKey].size_l += item.quantity;
             if (size === "XL") groupedItems[groupKey].size_xl += item.quantity;
-            if (size === "2XL") groupedItems[groupKey].size_2xl += item.quantity;
+            if (size === "2XL" || size === "XXL") groupedItems[groupKey].size_2xl += item.quantity;
 
         });
 
