@@ -205,7 +205,7 @@ export async function GET() {
         console.log("📧 Sending weekly summary email...", html);
         const emailsent = await resend.emails.send({
 
-            from: "AurixLab Automation <reports@gmail.com>",
+            from: "AurixLab Automation <onboarding@resend.dev>",
 
             to: "mehrab367@gmail.com",
 
