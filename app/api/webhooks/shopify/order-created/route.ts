@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
     }
 
     const order = JSON.parse(body);
-    console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order.order_number);
+    console.log("📦 NEW SHOPIFY ORDER RECEIVED:", order);
 
     try {
 
@@ -311,7 +311,9 @@ export async function POST(req: NextRequest) {
 
                 const variant = (item.variant_title || "").toUpperCase();
                 const parts = variant.split("/").map((p: string) => p.trim());
-
+                console.log("Processing item:", item);
+                console.log("Variant parts:", parts);
+                console.log("Product ID:", variant);
                 const color = parts[0] || "Unknown";
                 const size = parts[1] || "UNKNOWN";
 
