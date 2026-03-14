@@ -207,7 +207,7 @@ export async function GET() {
 
             from: "AurixLab Automation <onboarding@resend.dev>",
 
-            to: "mehrab367@gmail.com",
+            to: "0168mehrab@gmail.com",
 
             subject: "Weekly Store Summary",
 
