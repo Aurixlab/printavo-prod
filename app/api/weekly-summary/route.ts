@@ -202,19 +202,19 @@ export async function GET() {
         // ----------------------------------
         // SEND EMAIL
         // ----------------------------------
-
-        await resend.emails.send({
+        console.log("📧 Sending weekly summary email...", html);
+        const emailsent = await resend.emails.send({
 
             from: "AurixLab Automation <reports@aurixlab.com>",
 
-            to: process.env.SUMMARY_EMAIL!,
+            to: "mehrab367@gmail.com",
 
             subject: "Weekly Store Summary",
 
             html
 
         });
-
+        console.log("📧 Weekly summary email sent:", emailsent);
         return NextResponse.json({ success: true });
 
     } catch (err) {
