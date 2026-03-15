@@ -45,10 +45,11 @@ export async function POST(req: NextRequest) {
         const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
 
         const metafieldRes = await fetch(
-            `https://${shop}/admin/api/2024-01/collections/${collection.id}/metafields.json`,
+            `https://${shop}/admin/api/2024-01/custom_collections/${collection.id}/metafields.json`,
             {
                 headers: {
                     "X-Shopify-Access-Token": accessToken!,
+                    "Content-Type": "application/json"
                 },
             }
         );
