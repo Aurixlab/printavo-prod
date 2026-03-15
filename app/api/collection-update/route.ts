@@ -12,78 +12,82 @@ export async function POST(req: NextRequest) {
     try {
 
         //----------------------------------
-        // VERIFY SHOPIFY WEBHOOK
+        // VERIFY WEBHOOK
         //----------------------------------
 
         const rawBody = await req.text();
 
-        const hmacHeader = req.headers.get("x-shopify-hmac-sha256") || "";
+        const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
 
-        const generatedHash = crypto
+        const hash = crypto
             .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET!)
             .update(rawBody, "utf8")
             .digest("base64");
 
-        if (generatedHash !== hmacHeader) {
-            console.error("Invalid Shopify webhook signature");
+        if (hash !== hmac) {
             return new NextResponse("Unauthorized", { status: 401 });
         }
 
         //----------------------------------
-        // PARSE COLLECTION DATA
+        // PARSE COLLECTION
         //----------------------------------
 
         const collection = JSON.parse(rawBody);
-        console.log("Collection update received:", collection);
+
         const handle = collection.handle;
-
-        console.log("Collection update received:", handle);
-
+        console.log("Received collection update for:", collection);
         //----------------------------------
-        // DETECT IF COLLECTION IS ARCHIVED
+        // FETCH COLLECTION METAFIELDS
         //----------------------------------
 
-        /**
-         * Shopify doesn't send a direct "archived" field for collections.
-         * When you uncheck "Online Store" from sales channels,
-         * the collection stops being published.
-         */
+        const shop = req.headers.get("x-shopify-shop-domain");
 
-        const isPublishedOnline =
-            collection.published_scope === "web" ||
-            collection.published_scope === "global";
+        const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
 
+        const metafieldRes = await fetch(
+            `https://${shop}/admin/api/2024-01/collections/${collection.id}/metafields.json`,
+            {
+                headers: {
+                    "X-Shopify-Access-Token": accessToken!,
+                },
+            }
+        );
+
+        const metafieldData = await metafieldRes.json();
+
+        const statusField = metafieldData.metafields?.find(
+            (m: any) =>
+                m.namespace === "store" &&
+                m.key === "status"
+        );
+
+        const status = statusField?.value || "open";
+        console.log("Collection status:", status);
         //----------------------------------
-        // STORE CLOSED
+        // UPDATE DATABASE
         //----------------------------------
 
-        if (!isPublishedOnline) {
+        if (status === "closed") {
 
-            console.log("Store closed:", handle);
+            console.log("Closing store:", handle);
 
             await supabase
                 .from("stores")
                 .update({
                     is_active: false,
-                    closed_at: new Date().toISOString()
+                    closed_at: new Date().toISOString(),
                 })
                 .eq("collection_handle", handle);
 
-        }
+        } else {
 
-        //----------------------------------
-        // STORE REOPENED
-        //----------------------------------
-
-        if (isPublishedOnline) {
-
-            console.log("Store reopened:", handle);
+            console.log("Opening store:", handle);
 
             await supabase
                 .from("stores")
                 .update({
                     is_active: true,
-                    closed_at: null
+                    closed_at: null,
                 })
                 .eq("collection_handle", handle);
 
