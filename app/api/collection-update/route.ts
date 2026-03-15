@@ -8,15 +8,11 @@ const supabase = createClient(
 );
 
 export async function POST(req: NextRequest) {
-
     try {
-
         //----------------------------------
         // VERIFY WEBHOOK
         //----------------------------------
-
         const rawBody = await req.text();
-
         const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
 
         const hash = crypto
@@ -31,24 +27,50 @@ export async function POST(req: NextRequest) {
         //----------------------------------
         // PARSE COLLECTION
         //----------------------------------
-
         const collection = JSON.parse(rawBody);
-
         const handle = collection.handle;
         console.log("Received collection update for:", collection);
+
+        //----------------------------------
+        // FETCH ACCESS TOKEN
+        //----------------------------------
+        const shop = req.headers.get("x-shopify-shop-domain");
+
+        if (!shop) {
+            console.error("Missing shop domain header.");
+            return new NextResponse("Bad Request: Missing shop domain", { status: 400 });
+        }
+
+        // Request a new token using client credentials
+        const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+                grant_type: "client_credentials",
+                client_id: process.env.SHOPIFY_CLIENT_ID!,
+                client_secret: process.env.SHOPIFY_CLIENT_SECRET!,
+            }).toString(),
+        });
+
+        if (!tokenRes.ok) {
+            const errorText = await tokenRes.text();
+            console.error("Failed to fetch access token:", errorText);
+            return new NextResponse("Failed to authenticate with Shopify", { status: 500 });
+        }
+
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+
         //----------------------------------
         // FETCH COLLECTION METAFIELDS
         //----------------------------------
-
-        const shop = req.headers.get("x-shopify-shop-domain");
-
-        const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
-
         const metafieldRes = await fetch(
             `https://${shop}/admin/api/2024-01/collections/${collection.id}/metafields.json`,
             {
                 headers: {
-                    "X-Shopify-Access-Token": accessToken!,
+                    "X-Shopify-Access-Token": accessToken,
                     "Content-Type": "application/json"
                 }
             }
@@ -59,6 +81,11 @@ export async function POST(req: NextRequest) {
         console.log("Metafield API status:", metafieldRes.status);
         console.log("Metafield API response:", raw);
 
+        if (!metafieldRes.ok) {
+            // Failsafe in case the token lacks scopes or the endpoint changes
+            throw new Error(`Shopify API responded with ${metafieldRes.status}: ${raw}`);
+        }
+
         const metafieldData = JSON.parse(raw);
 
         const statusField = metafieldData.metafields?.find(
@@ -68,16 +95,13 @@ export async function POST(req: NextRequest) {
         );
 
         const status = statusField?.value || "open";
-
         console.log("Collection status:", status);
+
         //----------------------------------
         // UPDATE DATABASE
         //----------------------------------
-
         if (status === "closed") {
-
             console.log("Closing store:", handle);
-
             await supabase
                 .from("stores")
                 .update({
@@ -87,9 +111,7 @@ export async function POST(req: NextRequest) {
                 .eq("collection_handle", handle);
 
         } else {
-
             console.log("Opening store:", handle);
-
             await supabase
                 .from("stores")
                 .update({
@@ -97,17 +119,12 @@ export async function POST(req: NextRequest) {
                     closed_at: null,
                 })
                 .eq("collection_handle", handle);
-
         }
 
         return NextResponse.json({ success: true });
 
     } catch (err) {
-
         console.error("Collection webhook error:", err);
-
         return new NextResponse("Server Error", { status: 500 });
-
     }
-
 }
