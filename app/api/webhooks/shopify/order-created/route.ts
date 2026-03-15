@@ -682,6 +682,13 @@ export async function POST(req: NextRequest) {
         // ----------------------------------
         // INSERT ORDER
         // ----------------------------------
+        await supabase
+            .from("stores")
+            .upsert({
+                collection_handle: vendorHandle,
+                is_active: true
+            }, { onConflict: "collection_handle" });
+
 
         const { data: newOrder, error: orderError } = await supabase
             .from("orders")
