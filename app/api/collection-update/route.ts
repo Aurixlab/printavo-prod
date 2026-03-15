@@ -55,13 +55,16 @@ export async function POST(req: NextRequest) {
 
         const metafieldData = await metafieldRes.json();
 
+        console.log("Metafields:", metafieldData.metafields);
+
         const statusField = metafieldData.metafields?.find(
             (m: any) =>
-                m.namespace === "store" &&
-                m.key === "status"
+                m.namespace === "custom" &&
+                m.key === "store_status"
         );
 
         const status = statusField?.value || "open";
+
         console.log("Collection status:", status);
         //----------------------------------
         // UPDATE DATABASE
