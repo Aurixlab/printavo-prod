@@ -753,40 +753,117 @@ export async function POST(req: NextRequest) {
 
         }
 
-        // After parsing the order, before the isSanmar check:
+        // After INSERT ORDER ITEMS, replace the collection block with this:
 
         const productId = order.line_items[0]?.product_id;
 
-        // Get collection ID
-        const collectRes = await fetch(
-            `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collects.json?product_id=${productId}`,
-            { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
-        );
+        console.log("=== COLLECTION DEBUG START ===");
+        console.log("Product ID:", productId);
+        console.log("SHOPIFY_SHOP_DOMAIN:", process.env.SHOPIFY_SHOP_DOMAIN);
+        console.log("SHOPIFY_ADMIN_TOKEN exists:", !!process.env.SHOPIFY_ADMIN_TOKEN);
+        console.log("SHOPIFY_ADMIN_TOKEN prefix:", process.env.SHOPIFY_ADMIN_TOKEN?.slice(0, 10));
+
+        // ----------------------------------
+        // STEP 1: GET COLLECTION ID
+        // ----------------------------------
+
+        const collectUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collects.json?product_id=${productId}`;
+        console.log("Fetching collects URL:", collectUrl);
+
+        const collectRes = await fetch(collectUrl, {
+            headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
+        });
+
+        console.log("Collects response status:", collectRes.status);
         const collectData: any = await collectRes.json();
+        console.log("Collects raw response:", JSON.stringify(collectData, null, 2));
+
         const collectionId = collectData.collects?.[0]?.collection_id;
+        console.log("Resolved collection ID:", collectionId);
 
-        // Get template + metafields in parallel
-        const [collectionRes, metaRes] = await Promise.all([
-            fetch(
-                `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/custom_collections/${collectionId}.json`,
-                { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
-            ),
-            fetch(
-                `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collections/${collectionId}/metafields.json`,
-                { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
-            )
-        ]);
+        if (!collectionId) {
+            console.warn("⚠️ No collection ID found for product:", productId);
+            console.warn("This means the product is either:");
+            console.warn("  1. Not in any collection");
+            console.warn("  2. Only in a smart collection (collects API won't return it)");
+        }
 
-        const collectionData: any = await collectionRes.json();
-        const metaData: any = await metaRes.json();
+        // ----------------------------------
+        // STEP 2: TRY CUSTOM COLLECTION
+        // ----------------------------------
 
-        const templateSuffix = collectionData.custom_collection?.template_suffix; // e.g. "webstore-lions"
-        const storeType = metaData.metafields?.find(
-            (m: any) => m.namespace === "custom" && m.key === "store-type"
-        )?.value;
+        let templateSuffix: string | null = null;
+        let storeType: string | null = null;
 
-        console.log("Template:", templateSuffix);   // "webstore-lions"
-        console.log("Store type:", storeType);       // e.g. "sanmar" or "webstore"
+        if (collectionId) {
+
+            const customUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/custom_collections/${collectionId}.json`;
+            const smartUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/smart_collections/${collectionId}.json`;
+            const metaUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collections/${collectionId}/metafields.json`;
+
+            console.log("Fetching custom collection:", customUrl);
+
+            const customRes = await fetch(customUrl, {
+                headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
+            });
+
+            console.log("Custom collection status:", customRes.status);
+            const customData: any = await customRes.json();
+            console.log("Custom collection response:", JSON.stringify(customData, null, 2));
+
+            // ----------------------------------
+            // STEP 3: FALLBACK TO SMART COLLECTION
+            // ----------------------------------
+
+            if (customRes.status === 404 || !customData.custom_collection) {
+
+                console.log("Not a custom collection, trying smart collection...");
+
+                const smartRes = await fetch(smartUrl, {
+                    headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
+                });
+
+                console.log("Smart collection status:", smartRes.status);
+                const smartData: any = await smartRes.json();
+                console.log("Smart collection response:", JSON.stringify(smartData, null, 2));
+
+                templateSuffix = smartData.smart_collection?.template_suffix ?? null;
+
+            } else {
+
+                templateSuffix = customData.custom_collection?.template_suffix ?? null;
+
+            }
+
+            // ----------------------------------
+            // STEP 4: GET METAFIELDS
+            // ----------------------------------
+
+            console.log("Fetching metafields:", metaUrl);
+
+            const metaRes = await fetch(metaUrl, {
+                headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
+            });
+
+            console.log("Metafields response status:", metaRes.status);
+            const metaData: any = await metaRes.json();
+            console.log("Metafields raw response:", JSON.stringify(metaData, null, 2));
+
+            storeType = metaData.metafields?.find(
+                (m: any) => m.namespace === "custom" && m.key === "store_status"
+            )?.value ?? null;
+
+        }
+
+        console.log("=== COLLECTION DEBUG RESULT ===");
+        console.log("Template suffix:", templateSuffix);
+        console.log("Store type:", storeType);
+        console.log("=== COLLECTION DEBUG END ===");
+
+        // ----------------------------------
+        // ROUTE BASED ON storeType
+        // ----------------------------------
+
 
         // ----------------------------------
         // SANMAR CHECK
