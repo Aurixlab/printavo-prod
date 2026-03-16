@@ -753,6 +753,41 @@ export async function POST(req: NextRequest) {
 
         }
 
+        // After parsing the order, before the isSanmar check:
+
+        const productId = order.line_items[0]?.product_id;
+
+        // Get collection ID
+        const collectRes = await fetch(
+            `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collects.json?product_id=${productId}`,
+            { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
+        );
+        const collectData: any = await collectRes.json();
+        const collectionId = collectData.collects?.[0]?.collection_id;
+
+        // Get template + metafields in parallel
+        const [collectionRes, metaRes] = await Promise.all([
+            fetch(
+                `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/custom_collections/${collectionId}.json`,
+                { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
+            ),
+            fetch(
+                `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collections/${collectionId}/metafields.json`,
+                { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
+            )
+        ]);
+
+        const collectionData: any = await collectionRes.json();
+        const metaData: any = await metaRes.json();
+
+        const templateSuffix = collectionData.custom_collection?.template_suffix; // e.g. "webstore-lions"
+        const storeType = metaData.metafields?.find(
+            (m: any) => m.namespace === "custom" && m.key === "store-type"
+        )?.value;
+
+        console.log("Template:", templateSuffix);   // "webstore-lions"
+        console.log("Store type:", storeType);       // e.g. "sanmar" or "webstore"
+
         // ----------------------------------
         // SANMAR CHECK
         // ----------------------------------
