@@ -666,93 +666,6 @@ export async function POST(req: NextRequest) {
 
     try {
 
-        // ----------------------------------
-        // BASIC ORDER INFO
-        // ----------------------------------
-
-        const billing = order.billing_address || {};
-
-        const customerName =
-            `${order.customer?.first_name || ""} ${order.customer?.last_name || ""}`.trim();
-
-        const vendorHandle = order.line_items[0]?.vendor
-            ?.toLowerCase()
-            .replace(/\s+/g, "-");
-
-        // ----------------------------------
-        // INSERT ORDER
-        // ----------------------------------
-        await supabase
-            .from("stores")
-            .upsert({
-                collection_handle: vendorHandle,
-                is_active: true
-            }, { onConflict: "collection_handle" });
-
-
-        const { data: newOrder, error: orderError } = await supabase
-            .from("orders")
-            .upsert(
-                {
-                    shopify_order_id: order.id,
-                    order_number: order.order_number,
-                    customer_name: customerName,
-                    email: order.email,
-                    phone: billing.phone || null,
-                    city: billing.city,
-                    country: billing.country,
-                    zip: billing.zip,
-                    price_paid: order.total_price,
-                    collection_handle: vendorHandle,
-                    ordered_at: order.created_at
-                },
-                { onConflict: "shopify_order_id" }
-            )
-            .select()
-            .single();
-
-        if (orderError) {
-
-            console.error("Order insert failed:", orderError);
-
-            return new NextResponse("DB Error", { status: 500 });
-
-        }
-
-        const orderId = newOrder.id;
-
-        // ----------------------------------
-        // INSERT ORDER ITEMS
-        // ----------------------------------
-
-        for (const item of order.line_items) {
-
-            const { size, color } = extractVariant(item);
-
-            const { error: itemError } = await supabase
-                .from("order_items")
-                .upsert(
-                    {
-                        shopify_line_item_id: item.id,
-                        order_id: orderId,
-                        product_id: item.product_id,
-                        product_name: item.title,
-                        color,
-                        size,
-                        quantity: item.quantity,
-                        price: item.price
-                    },
-                    { onConflict: "shopify_line_item_id" }
-                );
-
-            if (itemError) {
-
-                console.error("Item insert failed:", itemError);
-
-            }
-
-        }
-
         // After INSERT ORDER ITEMS, replace the collection block with this:
 
         const productId = order.line_items[0]?.product_id;
@@ -793,7 +706,8 @@ export async function POST(req: NextRequest) {
         // ----------------------------------
 
         let templateSuffix: string | null = null;
-        let storeType: string | null = null;
+        let storeStatus: string | null = null;
+        let storeName: string | null = null;
 
         if (collectionId) {
 
@@ -849,39 +763,130 @@ export async function POST(req: NextRequest) {
             const metaData: any = await metaRes.json();
             console.log("Metafields raw response:", JSON.stringify(metaData, null, 2));
 
-            storeType = metaData.metafields?.find(
+            storeStatus = metaData.metafields?.find(
                 (m: any) => m.namespace === "custom" && m.key === "store_status"
+            )?.value ?? null;
+
+            storeName = metaData.metafields?.find(
+                (m: any) => m.namespace === "custom" && m.key === "store_name"
             )?.value ?? null;
 
         }
 
         console.log("=== COLLECTION DEBUG RESULT ===");
         console.log("Template suffix:", templateSuffix);
-        console.log("Store type:", storeType);
+        console.log("Store name:", storeName);
         console.log("=== COLLECTION DEBUG END ===");
 
         // ----------------------------------
-        // ROUTE BASED ON storeType
+        // ROUTE BASED ON storeName
         // ----------------------------------
+
+
+        // ----------------------------------
+        // BASIC ORDER INFO
+        // ----------------------------------
+
+        const billing = order.billing_address || {};
+
+        const customerName =
+            `${order.customer?.first_name || ""} ${order.customer?.last_name || ""}`.trim();
+
+        const vendorHandle = order.line_items[0]?.vendor
+            ?.toLowerCase()
+            .replace(/\s+/g, "-");
+
+        // ----------------------------------
+        // INSERT ORDER
+        // ----------------------------------
+        await supabase
+            .from("stores")
+            .upsert({
+                collection_handle: storeName,
+                is_active: true
+            }, { onConflict: "collection_handle" });
+
+
+        const { data: newOrder, error: orderError } = await supabase
+            .from("orders")
+            .upsert(
+                {
+                    shopify_order_id: order.id,
+                    order_number: order.order_number,
+                    customer_name: customerName,
+                    email: order.email,
+                    phone: billing.phone || null,
+                    city: billing.city,
+                    country: billing.country,
+                    zip: billing.zip,
+                    price_paid: order.total_price,
+                    collection_handle: storeName,
+                    ordered_at: order.created_at
+                },
+                { onConflict: "shopify_order_id" }
+            )
+            .select()
+            .single();
+
+        if (orderError) {
+
+            console.error("Order insert failed:", orderError);
+
+            return new NextResponse("DB Error", { status: 500 });
+
+        }
+
+        const orderId = newOrder.id;
+
+        // ----------------------------------
+        // INSERT ORDER ITEMS
+        // ----------------------------------
+
+        for (const item of order.line_items) {
+
+            const { size, color } = extractVariant(item);
+
+            const { error: itemError } = await supabase
+                .from("order_items")
+                .upsert(
+                    {
+                        shopify_line_item_id: item.id,
+                        order_id: orderId,
+                        product_id: item.product_id,
+                        product_name: item.title,
+                        color,
+                        size,
+                        quantity: item.quantity,
+                        price: item.price
+                    },
+                    { onConflict: "shopify_line_item_id" }
+                );
+
+            if (itemError) {
+
+                console.error("Item insert failed:", itemError);
+
+            }
+
+        }
+
 
 
         // ----------------------------------
         // SANMAR CHECK
         // ----------------------------------
 
-        const isSanmar = order.line_items.some(
-            (item: any) => item.vendor?.toLowerCase() === "sanmar"
-        );
+        const isWebstore = templateSuffix === "webstore" ? true : false;
 
-        if (!isSanmar) {
+        if (isWebstore) {
 
-            console.log("Non-Sanmar order stored in DB only");
+            console.log("Webstore order stored in DB only");
 
             return NextResponse.json({ stored: true });
 
         }
 
-        console.log("Sanmar order detected → sending to Printavo");
+        console.log("Budget promotion order detected → sending to Printavo");
 
         // ----------------------------------
         // LOGIN TO PRINTAVO
