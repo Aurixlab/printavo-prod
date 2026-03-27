@@ -128,7 +128,7 @@ export async function sendPrintavoBatch(store: any) {
             return { success: false, error: err };
         }
 
-        console.log("Printavo batch order created for store:", storeName);
+        console.log("Printavo batch order created for stores:", storeName);
         return { success: true };
 
     } catch (err) {
