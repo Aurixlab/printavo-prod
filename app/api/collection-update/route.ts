@@ -111,7 +111,6 @@ export async function POST(req: NextRequest) {
         }
         else if (storeStatus.toLowerCase() === "open") {
 
-            // Close last active store
             const { data: lastStore } = await supabase
                 .from("stores")
                 .select("*")
@@ -130,16 +129,21 @@ export async function POST(req: NextRequest) {
                     })
                     .eq("id", lastStore.id);
             }
-            console.log("Creating store:", lastStore);
-            // Create new store instance
-            await supabase
+
+            console.log("Creating store:", storeName);
+
+            const { error } = await supabase
                 .from("stores")
-                .upsert({
+                .insert({
                     name: storeName,
                     is_active: true,
                     opened_at: new Date().toISOString(),
                     closed_at: null,
                 });
+
+            if (error) {
+                console.error("Insert error:", error);
+            }
         }
 
         return NextResponse.json({ success: true });
