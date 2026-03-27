@@ -13,22 +13,30 @@ export async function sendPrintavoBatch(store: any) {
         // ----------------------------------
         // FETCH ALL ORDER ITEMS DURING ACTIVE PERIOD
         // ----------------------------------
-        const { data: storeOrders, error } = await supabase
-            .from("order_items")
-            .select(`
-                order_id,
-                product_id,
-                product_name,
-                size,
-                color,
-                quantity,
-                price
-            `)
+        // 1️⃣ Get all orders for this store during active period
+        const { data: storeOrderList, error: orderError } = await supabase
+            .from("orders")
+            .select("id")
+            .eq("store_name", storeName)
             .gte("created_at", store.created_at)
-            .lte("created_at", store.closed_at)
-            .eq("store_name", storeName);
+            .lte("created_at", store.closed_at);
 
-        if (error) throw error;
+        if (orderError) throw orderError;
+
+        const orderIds = storeOrderList?.map(o => o.id) || [];
+
+        if (orderIds.length === 0) {
+            console.log("No orders found for store:", storeName);
+            return { skipped: true };
+        }
+
+        // 2️⃣ Fetch all order items for those orders
+        const { data: storeOrders, error: itemsError } = await supabase
+            .from("order_items")
+            .select("*")
+            .in("order_id", orderIds);
+
+        if (itemsError) throw itemsError;
 
         if (!storeOrders || storeOrders.length === 0) {
             console.log("No orders found for store:", storeName);
