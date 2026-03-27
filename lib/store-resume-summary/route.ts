@@ -34,7 +34,7 @@ export async function sendStoreResumeSummary(storeName: string) {
     const { data: orders } = await supabase
         .from("orders")
         .select("*")
-        .eq("collection_handle", storeName)
+        .eq("store_name", storeName)
         .gte("ordered_at", startISO)
         .lte("ordered_at", endISO);
 
