@@ -10,6 +10,7 @@ export async function sendPrintavoBatch(store: any) {
     const storeName = store.name;
 
     try {
+        const now = new Date().toISOString();
         // ----------------------------------
         // FETCH ALL ORDER ITEMS DURING ACTIVE PERIOD
         // ----------------------------------
@@ -19,8 +20,7 @@ export async function sendPrintavoBatch(store: any) {
             .select("id")
             .eq("store_name", storeName)
             .gte("created_at", store.created_at)
-            .lte("created_at", store.closed_at);
-
+            .lte("created_at", now); // use current timestamp instead of null
         if (orderError) throw orderError;
 
         const orderIds = storeOrderList?.map(o => o.id) || [];
