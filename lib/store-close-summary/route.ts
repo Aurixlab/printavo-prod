@@ -138,7 +138,7 @@ export async function sendStoreCloseSummary(storeName: string) {
     const { data: orders } = await supabase
         .from("orders")
         .select("*")
-        .eq("collection_handle", store.collection_handle)
+        .eq("store_name", storeName)  // ✅ matches your original
         .gte("ordered_at", startISO)
         .lte("ordered_at", endISO);
 
@@ -204,7 +204,9 @@ export async function sendStoreCloseSummary(storeName: string) {
         </tr>`;
     });
 
-    const displayStoreName = storeName.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    const displayStoreName = storeName
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (l) => l.toUpperCase());
 
     //----------------------------------
     // BUILD HTML
