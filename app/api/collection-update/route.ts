@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendStoreCloseSummary } from "../../../lib/store-close-summary/route";
 import { sendStoreResumeSummary } from "../../../lib/store-resume-summary/route";
+import { sendPrintavoBatch } from "@/lib/printavo-store-close/route";
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
                         closed_at: new Date().toISOString(),
                     })
                     .eq("id", lastStore.id);
-
+                await sendPrintavoBatch(lastStore);
                 await sendStoreCloseSummary(storeName);
             }
         }
