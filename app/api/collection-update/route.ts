@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
+import { sendStoreCloseSummary } from "../store-close-summary/route";
+import { sendStoreResumeSummary } from "../store-resume-summary/route";
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -63,30 +64,83 @@ export async function POST(req: NextRequest) {
 
         console.log("Store status:", storeStatus);
         console.log("Store name:", storeName);
+        if (storeStatus.toLowerCase() === "resume") {
 
-        //----------------------------------
-        // UPDATE DATABASE
-        //----------------------------------
-        // if (status === "closed") {
-        //     console.log("Closing store:", handle);
-        //     await supabase
-        //         .from("stores")
-        //         .update({
-        //             is_active: false,
-        //             closed_at: new Date().toISOString(),
-        //         })
-        //         .eq("collection_handle", handle);
+            const { data: lastStore } = await supabase
+                .from("stores")
+                .select("*")
+                .eq("name", storeName)
+                .order("opened_at", { ascending: false })
+                .limit(1)
+                .single();
 
-        // } else {
-        //     console.log("Opening store:", handle);
-        //     await supabase
-        //         .from("stores")
-        //         .update({
-        //             is_active: true,
-        //             closed_at: null,
-        //         })
-        //         .eq("collection_handle", handle);
-        // }
+            if (lastStore) {
+                await supabase
+                    .from("stores")
+                    .update({
+                        is_active: true,
+                        closed_at: null,
+                    })
+                    .eq("id", lastStore.id);
+                await sendStoreResumeSummary(storeName);
+            }
+        }
+
+        else if (storeStatus.toLowerCase() === "closed") {
+
+            const { data: lastStore } = await supabase
+                .from("stores")
+                .select("*")
+                .eq("name", storeName)
+                .eq("is_active", true)
+                .order("opened_at", { ascending: false })
+                .limit(1)
+                .single();
+
+            if (lastStore) {
+                await supabase
+                    .from("stores")
+                    .update({
+                        is_active: false,
+                        closed_at: new Date().toISOString(),
+                    })
+                    .eq("id", lastStore.id);
+
+                await sendStoreCloseSummary(storeName);
+            }
+        }
+        else if (storeStatus.toLowerCase() === "open") {
+
+            // Close last active store
+            const { data: lastStore } = await supabase
+                .from("stores")
+                .select("*")
+                .eq("name", storeName)
+                .eq("is_active", true)
+                .order("opened_at", { ascending: false })
+                .limit(1)
+                .single();
+
+            if (lastStore) {
+                await supabase
+                    .from("stores")
+                    .update({
+                        is_active: false,
+                        closed_at: new Date().toISOString(),
+                    })
+                    .eq("id", lastStore.id);
+            }
+
+            // Create new store instance
+            await supabase
+                .from("stores")
+                .insert({
+                    name: storeName,
+                    is_active: true,
+                    opened_at: new Date().toISOString(),
+                    closed_at: null,
+                });
+        }
 
         return NextResponse.json({ success: true });
 
