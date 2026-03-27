@@ -101,7 +101,7 @@ export async function sendPrintavoBatch(store: any) {
 
         const orderPayload = {
             user_id: myUserId,
-            customer_id: myUserId,
+            customer_id: 10572789,
             visual_id: `Store-${storeName}-${store.created_at}`,
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
