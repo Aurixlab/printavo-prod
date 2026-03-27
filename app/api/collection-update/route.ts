@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
                 .from("stores")
                 .select("*")
                 .eq("name", storeName)
-                .order("opened_at", { ascending: false })
+                .order("created_at", { ascending: false })
                 .limit(1)
                 .single();
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
                 .select("*")
                 .eq("name", storeName)
                 .eq("is_active", true)
-                .order("opened_at", { ascending: false })
+                .order("created_at", { ascending: false })
                 .limit(1)
                 .single();
 
@@ -111,38 +111,45 @@ export async function POST(req: NextRequest) {
         }
         else if (storeStatus.toLowerCase() === "open") {
 
-            const { data: lastStore } = await supabase
+            //----------------------------------
+            // CHECK ACTIVE STORE
+            //----------------------------------
+
+            const { data: activeStore } = await supabase
                 .from("stores")
                 .select("*")
                 .eq("name", storeName)
                 .eq("is_active", true)
-                .order("opened_at", { ascending: false })
+                .order("created_at", { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
-            if (lastStore) {
-                await supabase
-                    .from("stores")
-                    .update({
-                        is_active: false,
-                        closed_at: new Date().toISOString(),
-                    })
-                    .eq("id", lastStore.id);
+            //----------------------------------
+            // IF ACTIVE STORE EXISTS → IGNORE
+            //----------------------------------
+
+            if (activeStore) {
+                console.log("Active store already exists, skipping creation:", storeName);
+                return NextResponse.json({ skipped: true });
             }
 
-            console.log("Creating store:", storeName);
+            //----------------------------------
+            // CREATE NEW STORE
+            //----------------------------------
+
+            console.log("Creating new store:", storeName);
 
             const { error } = await supabase
                 .from("stores")
                 .insert({
                     name: storeName,
+                    created_at: new Date().toISOString(),
                     is_active: true,
-                    opened_at: new Date().toISOString(),
-                    closed_at: null,
+                    closed_at: null
                 });
 
             if (error) {
-                console.error("Insert error:", error);
+                console.error("Store insert error:", error);
             }
         }
 

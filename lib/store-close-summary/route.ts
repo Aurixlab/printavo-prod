@@ -18,13 +18,13 @@ export async function sendStoreCloseSummary(storeName: string) {
         .from("stores")
         .select("*")
         .eq("name", storeName)
-        .order("opened_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(1)
         .single();
 
     if (!store) return;
 
-    const startISO = store.opened_at;
+    const startISO = store.created_at;
     const endISO = store.closed_at;
 
     //----------------------------------

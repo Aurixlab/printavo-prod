@@ -220,14 +220,35 @@ export async function POST(req: NextRequest) {
             .replace(/\s+/g, "-");
 
         // ----------------------------------
-        // INSERT ORDER
+        // INSERT Store
         // ----------------------------------
-        // await supabase
-        //     .from("stores")
-        //     .upsert({
-        //         name: storeName,
-        //         is_active: true
-        //     }, { onConflict: "collection_handle" });
+        // Check if there's already an active store
+        const { data: existingStore, error: selectError } = await supabase
+            .from("stores")
+            .select("*")
+            .eq("is_active", true)
+            .limit(1);
+
+        if (selectError) {
+            console.error("Error checking existing stores:", selectError);
+        } else if (!existingStore || existingStore.length === 0) {
+            // No active store found, insert a new one
+            const { data: newStore, error: insertError } = await supabase
+                .from("stores")
+                .insert({
+                    name: storeName,
+                    is_active: true,
+                    created_at: new Date().toISOString()
+                });
+
+            if (insertError) {
+                console.error("Error inserting store:", insertError);
+            } else {
+                console.log("Store created:", newStore);
+            }
+        } else {
+            console.log("An active store already exists. Skipping insert.");
+        }
 
 
         const { data: newOrder, error: orderError } = await supabase
@@ -244,7 +265,7 @@ export async function POST(req: NextRequest) {
                     zip: billing.zip,
                     price_paid: order.total_price,
                     store_name: storeName,
-                    ordered_at: order.created_at
+                    ordered_at: new Date().toISOString()
                 },
                 { onConflict: "shopify_order_id" }
             )
