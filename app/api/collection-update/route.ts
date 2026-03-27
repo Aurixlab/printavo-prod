@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendStoreCloseSummary } from "../store-close-summary/route";
-import { sendStoreResumeSummary } from "../store-resume-summary/route";
+import { sendStoreCloseSummary } from "../../../lib/store-close-summary/route";
+import { sendStoreResumeSummary } from "../../../lib/store-resume-summary/route";
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
