@@ -130,11 +130,11 @@ export async function POST(req: NextRequest) {
                     })
                     .eq("id", lastStore.id);
             }
-
+            console.log("Creating store:", lastStore);
             // Create new store instance
             await supabase
                 .from("stores")
-                .insert({
+                .upsert({
                     name: storeName,
                     is_active: true,
                     opened_at: new Date().toISOString(),
