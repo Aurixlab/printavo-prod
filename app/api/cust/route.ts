@@ -22,64 +22,67 @@ export async function GET() {
 
         const loginData: any = await loginRes.json();
 
-        if (!loginData.token) {
-            return NextResponse.json(
-                { error: "Printavo login failed", loginData },
-                { status: 500 }
-            );
-        }
-
         const token = loginData.token;
 
-        // ----------------------------------
-        // GET ORDER STATUSES
-        // ----------------------------------
-
-        const statusRes = await fetch(
-            `https://www.printavo.com/api/v1/orderstatuses?email=aurixlab@gmail.com&token=${token}&per_page=100`
-        );
-
-        const statusData: any = await statusRes.json();
-
-        if (!statusData.data) {
+        if (!token) {
             return NextResponse.json(
-                { error: "Failed to fetch statuses", statusData },
+                { error: "Login failed", loginData },
                 { status: 500 }
             );
         }
 
         // ----------------------------------
-        // FIND WEBSTORE-2026
+        // SEARCH CUSTOMER BY EMAIL
         // ----------------------------------
 
-        // console.log("Printavo Statuses:", statusData.data);
+        const searchEmail = "aurixlab@gmail.com";
 
-        const webstoreStatus = statusData.data.find(
-            (status: any) =>
-                status.name?.trim().toLowerCase() === "webstore-2026"
+        const customerRes = await fetch(
+            `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}&query=${encodeURIComponent(
+                searchEmail
+            )}`
         );
 
-        console.log("WEBSTORE:", webstoreStatus);
+        const customerData: any = await customerRes.json();
 
-        if (!webstoreStatus) {
+        console.log("Customers:", customerData);
+
+        let page = 1;
+        let foundCustomer = null;
+
+        while (!foundCustomer) {
+            const res = await fetch(
+                `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}&page=${page}`
+            );
+
+            const data = await res.json();
+
+            foundCustomer = data.data.find((c: any) =>
+                c.customer_email?.toLowerCase() === "aurixlab@gmail.com"
+            );
+
+            if (page >= data.meta.total_pages) break;
+
+            page++;
+        }
+
+        console.log("FOUND:", foundCustomer);
+
+        if (!foundCustomer) {
             return NextResponse.json(
-                { error: "WEBSTORE-2026 not found" },
+                { message: "Customer not found" },
                 { status: 404 }
             );
         }
 
-        // ----------------------------------
-        // RETURN RESPONSE
-        // ----------------------------------
-
         return NextResponse.json({
             success: true,
-            statusId: webstoreStatus.id,
-            status: webstoreStatus
+            customerId: foundCustomer.id,
+            foundCustomer
         });
 
     } catch (error: any) {
-        console.error("Printavo Error:", error);
+        console.error(error);
 
         return NextResponse.json(
             {

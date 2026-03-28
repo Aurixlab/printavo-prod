@@ -379,9 +379,9 @@ export async function POST(req: NextRequest) {
             const newCust: any = await custRes.json();
 
             customerId = newCust.id;
-
+            console.log("Created new Printavo customer with ID:", customerId);
         }
-
+        console.log("Found Printavo customer with ID:", customerId);
         // ----------------------------------
         // DELIVERY DATE
         // ----------------------------------
@@ -453,6 +453,7 @@ export async function POST(req: NextRequest) {
 
         });
 
+
         const lineitems_attributes = Object.values(groupedItems);
         // Status IDs from your printed list
         const RUSH_STATUS_ID = 134404; // 📦ORDER ITEMS **RUSH**
@@ -463,18 +464,28 @@ export async function POST(req: NextRequest) {
         // ----------------------------------
         // CREATE PRINTAVO ORDER
         // ----------------------------------
-
+        const isPickup = !order.shipping_address;
+        const addressSource = order.billing_address || order.shipping_address
         const orderPayload = {
 
             user_id: myUserId,
             customer_id: customerId,
-            order_status_id: finalStatusId,
             visual_id: order.order_number.toString(),
 
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
 
             notes: `Budget Promotion Shopify Order #${order.order_number}`,
+            order_addresses_attributes: [
+                {
+                    address1: addressSource?.address1 || (isPickup ? "LOCAL PICKUP" : ""),
+                    city: addressSource?.city || "",
+                    state: addressSource?.province || "",
+                    zip: addressSource?.zip || "",
+                    country: addressSource?.country_code || "CA",
+                    phone: addressSource?.phone || ""
+                }
+            ],
 
             lineitems_attributes
 
@@ -498,6 +509,25 @@ export async function POST(req: NextRequest) {
             return new NextResponse(err, { status: 400 });
 
         }
+
+        const createdOrder: any = await orderRes.json();
+
+        const printavoOrderId = createdOrder.id;
+
+        console.log("Created Printavo Order ID:", printavoOrderId);
+
+        await fetch(
+            `https://www.printavo.com/api/v1/orders/${printavoOrderId}?email=aurixlab@gmail.com&token=${token}`,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    order_status_id: finalStatusId
+                })
+            }
+        );
 
         console.log("Printavo order created");
 
