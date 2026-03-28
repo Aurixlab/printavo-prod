@@ -287,7 +287,7 @@ export async function sendStoreCloseSummary(storeName: string) {
     from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
     to: "aurixlab@gmail.com",
     cc: "0168mehrab@gmail.com",
-    subject: "Weekly + Running Store Summary",
+    subject: "Weekly + Store Lifetime Summary",
     html
   });
 }

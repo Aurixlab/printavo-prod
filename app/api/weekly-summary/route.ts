@@ -625,7 +625,7 @@ export async function GET() {
 Weekly Summary
 </div>
 
-<h1 style="margin:10px 0 6px 0">AurixLab Webstores</h1>
+<h1 style="margin:10px 0 6px 0">Budget Promotion Webstores</h1>
 <p style="color:#6b7280">${formattedStart} → ${formattedEnd}</p>
 </div>
 
@@ -678,7 +678,7 @@ Automated by AurixLab
       from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
       to: "aurixlab@gmail.com",
       cc: "0168mehrab@gmail.com",
-      subject: "Weekly + Running Store Summary",
+      subject: "Budget Promotions Webstores Weekly + Running Store Summary",
       html
     });
 
