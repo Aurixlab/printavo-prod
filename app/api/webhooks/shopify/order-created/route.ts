@@ -458,8 +458,8 @@ export async function POST(req: NextRequest) {
         const RUSH_STATUS_ID = 134404; // 📦ORDER ITEMS **RUSH**
         const QUOTE_STATUS_ID = 22634;  // Quote
 
-        // const isRush = order.shipping_lines?.some((s: any) => s.title.includes("Calgary Location"));
-        // const finalStatusId = isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID;
+        const isRush = order.shipping_lines?.some((s: any) => s.title.includes("Calgary Location"));
+        const finalStatusId = isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID;
         // ----------------------------------
         // CREATE PRINTAVO ORDER
         // ----------------------------------
@@ -468,7 +468,7 @@ export async function POST(req: NextRequest) {
 
             user_id: myUserId,
             customer_id: customerId,
-            order_status_id: RUSH_STATUS_ID,
+            order_status_id: finalStatusId,
             visual_id: order.order_number.toString(),
 
             formatted_due_date: formattedDueDate,
