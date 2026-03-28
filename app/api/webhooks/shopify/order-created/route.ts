@@ -219,116 +219,107 @@ export async function POST(req: NextRequest) {
             ?.toLowerCase()
             .replace(/\s+/g, "-");
 
-        // ----------------------------------
-        // INSERT Store
-        // ----------------------------------
-        // Check if there's already an active store
-        const { data: existingStore, error: selectError } = await supabase
-            .from("stores")
-            .select("*")
-            .eq("is_active", true)
-            .limit(1);
-
-        if (selectError) {
-            console.error("Error checking existing stores:", selectError);
-        } else if (!existingStore || existingStore.length === 0) {
-            // No active store found, insert a new one
-            const { data: newStore, error: insertError } = await supabase
+        if (templateSuffix?.toLowerCase() === "webstore") {
+            // ----------------------------------
+            // INSERT Store
+            // ----------------------------------
+            // Check if there's already an active store
+            const { data: existingStore, error: selectError } = await supabase
                 .from("stores")
-                .insert({
-                    name: storeName,
-                    is_active: true,
-                    created_at: new Date().toISOString()
-                });
+                .select("*")
+                .eq("is_active", true)
+                .limit(1);
 
-            if (insertError) {
-                console.error("Error inserting store:", insertError);
+            if (selectError) {
+                console.error("Error checking existing stores:", selectError);
+            } else if (!existingStore || existingStore.length === 0) {
+                // No active store found, insert a new one
+                const { data: newStore, error: insertError } = await supabase
+                    .from("stores")
+                    .insert({
+                        name: storeName,
+                        is_active: true,
+                        created_at: new Date().toISOString()
+                    });
+
+                if (insertError) {
+                    console.error("Error inserting store:", insertError);
+                } else {
+                    console.log("Store created:", newStore);
+                }
             } else {
-                console.log("Store created:", newStore);
+                console.log("An active store already exists. Skipping insert.");
             }
-        } else {
-            console.log("An active store already exists. Skipping insert.");
-        }
 
 
-        const { data: newOrder, error: orderError } = await supabase
-            .from("orders")
-            .upsert(
-                {
-                    shopify_order_id: order.id,
-                    order_number: order.order_number,
-                    customer_name: customerName,
-                    email: order.email,
-                    phone: billing.phone || null,
-                    city: billing.city,
-                    country: billing.country,
-                    zip: billing.zip,
-                    price_paid: order.total_price,
-                    store_name: storeName,
-                    ordered_at: new Date().toISOString()
-                },
-                { onConflict: "shopify_order_id" }
-            )
-            .select()
-            .single();
-
-        if (orderError) {
-
-            console.error("Order insert failed:", orderError);
-
-            return new NextResponse("DB Error", { status: 500 });
-
-        }
-
-        const orderId = newOrder.id;
-
-        // ----------------------------------
-        // INSERT ORDER ITEMS
-        // ----------------------------------
-
-        for (const item of order.line_items) {
-
-            const { size, color } = extractVariant(item);
-
-            const { error: itemError } = await supabase
-                .from("order_items")
+            const { data: newOrder, error: orderError } = await supabase
+                .from("orders")
                 .upsert(
                     {
-                        shopify_line_item_id: item.id,
-                        order_id: orderId,
-                        product_id: item.product_id,
-                        product_name: item.title,
-                        color,
-                        size,
-                        quantity: item.quantity,
-                        price: item.price
+                        shopify_order_id: order.id,
+                        order_number: order.order_number,
+                        customer_name: customerName,
+                        email: order.email,
+                        phone: billing.phone || null,
+                        city: billing.city,
+                        country: billing.country,
+                        zip: billing.zip,
+                        price_paid: order.total_price,
+                        store_name: storeName,
+                        ordered_at: new Date().toISOString()
                     },
-                    { onConflict: "shopify_line_item_id" }
-                );
+                    { onConflict: "shopify_order_id" }
+                )
+                .select()
+                .single();
 
-            if (itemError) {
+            if (orderError) {
 
-                console.error("Item insert failed:", itemError);
+                console.error("Order insert failed:", orderError);
+
+                return new NextResponse("DB Error", { status: 500 });
 
             }
 
-        }
+            const orderId = newOrder.id;
 
+            // ----------------------------------
+            // INSERT ORDER ITEMS
+            // ----------------------------------
 
+            for (const item of order.line_items) {
 
-        // ----------------------------------
-        // Webstore CHECK
-        // ----------------------------------
+                const { size, color } = extractVariant(item);
 
-        const isWebstore = templateSuffix === "webstore" ? true : false;
+                const { error: itemError } = await supabase
+                    .from("order_items")
+                    .upsert(
+                        {
+                            shopify_line_item_id: item.id,
+                            order_id: orderId,
+                            product_id: item.product_id,
+                            product_name: item.title,
+                            color,
+                            size,
+                            quantity: item.quantity,
+                            price: item.price
+                        },
+                        { onConflict: "shopify_line_item_id" }
+                    );
 
-        if (isWebstore) {
+                if (itemError) {
 
+                    console.error("Item insert failed:", itemError);
+
+                }
+
+            }
             console.log("Webstore order stored in DB only");
 
             return NextResponse.json({ stored: true });
-
         }
+
+
 
         console.log("Budget promotion order detected → sending to Printavo");
 
