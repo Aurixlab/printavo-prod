@@ -84,7 +84,7 @@ export async function GET() {
     const storeMap: any = {};
 
     filteredOrders.forEach((order) => {
-      const store = order.collection_handle || "Unknown";
+      const store = order.store_name || "Unknown";
       if (!storeMap[store]) {
         storeMap[store] = { orders: [], items: [], storeRevenue: 0 };
       }
@@ -94,7 +94,7 @@ export async function GET() {
 
     filteredItems.forEach((item) => {
       const order = filteredOrders.find((o) => o.id === item.order_id);
-      const store = order?.collection_handle || "Unknown";
+      const store = order?.store_name || "Unknown";
       if (!storeMap[store]) {
         storeMap[store] = { orders: [], items: [], storeRevenue: 0 };
       }
