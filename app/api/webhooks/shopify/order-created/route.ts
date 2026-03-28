@@ -400,11 +400,33 @@ export async function POST(req: NextRequest) {
             new Date().toLocaleString("en-US", { timeZone: "America/Denver" })
         );
 
-        calgaryNow.setDate(calgaryNow.getDate() + 1);
+        const currentHour = calgaryNow.getHours();
+        const day = calgaryNow.getDay(); // 0=Sun 1=Mon ... 6=Sat
 
-        const formattedDueDate =
-            calgaryNow.toLocaleDateString("en-US");
+        let deliveryDate = new Date(calgaryNow);
 
+        // --- WEEKEND RULE ---
+        if (day === 6) {
+            // Saturday → Monday
+            deliveryDate.setDate(deliveryDate.getDate() + 2);
+        }
+        else if (day === 0) {
+            // Sunday → Monday
+            deliveryDate.setDate(deliveryDate.getDate() + 1);
+        }
+        else {
+            // Weekday rule
+            if (currentHour >= 11) {
+                deliveryDate.setDate(deliveryDate.getDate() + 1);
+            }
+
+            // If next day lands on weekend → push to Monday
+            const nextDay = deliveryDate.getDay();
+            if (nextDay === 6) deliveryDate.setDate(deliveryDate.getDate() + 2);
+            if (nextDay === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
+        }
+
+        const formattedDueDate = deliveryDate.toLocaleDateString("en-US");
         // ----------------------------------
         // GROUP ITEMS FOR PRINTAVO
         // ----------------------------------
