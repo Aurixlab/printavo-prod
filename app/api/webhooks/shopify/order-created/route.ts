@@ -359,7 +359,7 @@ export async function POST(req: NextRequest) {
         let customerId = searchData.data?.find(
             (c: any) => c.email?.toLowerCase() === shopifyEmail
         )?.id;
-
+        const addressSource = order.billing_address || order.shipping_address
         if (!customerId) {
 
             const custRes = await fetch(
@@ -371,7 +371,17 @@ export async function POST(req: NextRequest) {
                         user_id: myUserId,
                         first_name: order.customer?.first_name || "Shopify",
                         last_name: order.customer?.last_name || "Customer",
-                        customer_email: shopifyEmail
+                        customer_email: shopifyEmail,
+                        phone: order.billing_address?.phone || "Unknown",
+                        billing_address_attributes: [
+                            {
+                                address1: addressSource?.address1,
+                                city: addressSource?.city || "",
+                                state: addressSource?.province || "",
+                                zip: addressSource?.zip || "",
+                                country: addressSource?.country_code || "CA",
+                            }
+                        ],
                     })
                 }
             );
@@ -465,19 +475,20 @@ export async function POST(req: NextRequest) {
         // CREATE PRINTAVO ORDER
         // ----------------------------------
         const isPickup = !order.shipping_address;
-        const addressSource = order.billing_address || order.shipping_address
+
         const orderPayload = {
 
             user_id: myUserId,
             customer_id: customerId,
             visual_id: order.order_number.toString(),
-
+            orderstatus_id: finalStatusId,
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
 
             notes: `Budget Promotion Shopify Order #${order.order_number}`,
             order_addresses_attributes: [
                 {
+                    name: customerName || "Shopify Customer",
                     address1: addressSource?.address1 || (isPickup ? "LOCAL PICKUP" : ""),
                     city: addressSource?.city || "",
                     state: addressSource?.province || "",
@@ -510,24 +521,24 @@ export async function POST(req: NextRequest) {
 
         }
 
-        const createdOrder: any = await orderRes.json();
+        // const createdOrder: any = await orderRes.json();
 
-        const printavoOrderId = createdOrder.id;
+        // const printavoOrderId = createdOrder.id;
 
-        console.log("Created Printavo Order ID:", printavoOrderId);
+        // console.log("Created Printavo Order ID:", printavoOrderId);
 
-        await fetch(
-            `https://www.printavo.com/api/v1/orders/${printavoOrderId}?email=aurixlab@gmail.com&token=${token}`,
-            {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    order_status_id: finalStatusId
-                })
-            }
-        );
+        // await fetch(
+        //     `https://www.printavo.com/api/v1/orders/${printavoOrderId}?email=aurixlab@gmail.com&token=${token}`,
+        //     {
+        //         method: "PUT",
+        //         headers: {
+        //             "Content-Type": "application/json"
+        //         },
+        //         body: JSON.stringify({
+        //             order_status_id: finalStatusId
+        //         })
+        //     }
+        // );
 
         console.log("Printavo order created");
 
