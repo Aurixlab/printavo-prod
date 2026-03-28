@@ -443,7 +443,12 @@ export async function POST(req: NextRequest) {
         }
 
         const lineitems_attributes = Object.values(grouped);
+        // Status IDs from your printed list
+        const RUSH_STATUS_ID = 134404; // 📦ORDER ITEMS **RUSH**
+        const QUOTE_STATUS_ID = 22634;  // Quote
 
+        // const isRush = order.shipping_lines?.some((s: any) => s.title.includes("Calgary Location"));
+        // const finalStatusId = isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID;
         // ----------------------------------
         // CREATE PRINTAVO ORDER
         // ----------------------------------
@@ -452,13 +457,13 @@ export async function POST(req: NextRequest) {
 
             user_id: myUserId,
             customer_id: customerId,
-
+            order_status_id: RUSH_STATUS_ID,
             visual_id: order.order_number.toString(),
 
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
 
-            notes: `Shopify Order #${order.order_number}`,
+            notes: `Budget Promotion Shopify Order #${order.order_number}`,
 
             lineitems_attributes
 

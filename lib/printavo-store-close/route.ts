@@ -98,11 +98,11 @@ export async function sendPrintavoBatch(store: any) {
         );
         calgaryNow.setDate(calgaryNow.getDate() + 1);
         const formattedDueDate = calgaryNow.toLocaleDateString("en-US");
-
+        const webstoreStatus = 533440
         const orderPayload = {
             user_id: myUserId,
             customer_id: 10572789,
-
+            order_status_id: webstoreStatus,
             visual_id: Date.now().toString(),
 
             formatted_due_date: formattedDueDate,
