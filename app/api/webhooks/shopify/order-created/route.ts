@@ -399,41 +399,61 @@ export async function POST(req: NextRequest) {
         // GROUP ITEMS FOR PRINTAVO
         // ----------------------------------
 
-        const grouped: any = {};
+        const groupedItems: Record<string, any> = {};
 
-        for (const item of order.line_items) {
+        order.line_items.forEach((item: any) => {
 
-            const { size, color } = extractVariant(item);
+            const variant = (item.variant_title || "").toUpperCase();
+            const parts = variant.split("/").map((p: string) => p.trim());
 
-            const key = `${item.product_id}-${color}`;
+            const color = parts[0] || "Unknown";
+            const size = parts[1] || "";
+            const qty = Number(item.quantity);
 
-            if (!grouped[key]) {
+            const groupKey = `${item.product_id}-${color}`;
 
-                grouped[key] = {
+            if (!groupedItems[groupKey]) {
 
+                groupedItems[groupKey] = {
                     style_description: item.title,
                     unit_cost: parseFloat(item.price),
-                    color,
+                    color: color,
 
+                    size_xs: 0,
                     size_s: 0,
                     size_m: 0,
                     size_l: 0,
                     size_xl: 0,
-                    size_2xl: 0
+                    size_2xl: 0,
+                    size_3xl: 0,
+                    size_4xl: 0,
+                    size_5xl: 0,
+                    size_6xl: 0,
 
+                    images_attributes:
+                        item.properties
+                            ?.filter((p: any) => p.value?.toString().includes("http"))
+                            .map((p: any) => ({
+                                file_url: p.value,
+                                mime_type: "image/png"
+                            })) || []
                 };
-
             }
 
-            if (size === "S") grouped[key].size_s += item.quantity;
-            if (size === "M") grouped[key].size_m += item.quantity;
-            if (size === "L") grouped[key].size_l += item.quantity;
-            if (size === "XL") grouped[key].size_xl += item.quantity;
-            if (size === "2XL" || size === "XXL") grouped[key].size_2xl += item.quantity;
+            if (size === "XS") groupedItems[groupKey].size_xs += qty;
+            else if (size === "S") groupedItems[groupKey].size_s += qty;
+            else if (size === "M") groupedItems[groupKey].size_m += qty;
+            else if (size === "L") groupedItems[groupKey].size_l += qty;
+            else if (size === "XL") groupedItems[groupKey].size_xl += qty;
+            else if (size === "2XL" || size === "XXL") groupedItems[groupKey].size_2xl += qty;
+            else if (size === "3XL") groupedItems[groupKey].size_3xl += qty;
+            else if (size === "4XL") groupedItems[groupKey].size_4xl += qty;
+            else if (size === "5XL") groupedItems[groupKey].size_5xl += qty;
+            else if (size === "6XL") groupedItems[groupKey].size_6xl += qty;
 
-        }
+        });
 
-        const lineitems_attributes = Object.values(grouped);
+        const lineitems_attributes = Object.values(groupedItems);
         // Status IDs from your printed list
         const RUSH_STATUS_ID = 134404; // 📦ORDER ITEMS **RUSH**
         const QUOTE_STATUS_ID = 22634;  // Quote
