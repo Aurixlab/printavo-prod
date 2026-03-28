@@ -569,7 +569,7 @@ export async function GET() {
     //----------------------------------
 
     await resend.emails.send({
-      from: "AurixLab Automation <onboarding@resend.dev>",
+      from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
       to: "0168mehrab@gmail.com",
       subject: "Weekly + Running Store Summary",
       html
