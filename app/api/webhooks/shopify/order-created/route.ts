@@ -373,22 +373,22 @@ export async function POST(req: NextRequest) {
                         last_name: order.customer?.last_name || "Customer",
                         customer_email: shopifyEmail,
                         phone: order.billing_address?.phone || "Unknown",
-                        billing_address_attributes: [
-                            {
-                                address1: addressSource?.address1,
-                                city: addressSource?.city || "",
-                                state: addressSource?.province || "",
-                                zip: addressSource?.zip || "",
-                                country: addressSource?.country_code || "CA",
-                            }
-                        ],
+                        billing_address_attributes: {
+                            address1: addressSource?.address1 || "",
+                            city: addressSource?.city || "",
+                            state: addressSource?.province || "",
+                            zip: addressSource?.zip || "",
+                            country: addressSource?.country_code || "CA",
+                        }
                     })
                 }
             );
 
             const newCust: any = await custRes.json();
 
-            customerId = newCust.id;
+            console.log("Printavo customer create response:", newCust);
+
+            customerId = newCust?.id;
             console.log("Created new Printavo customer with ID:", customerId);
         }
         console.log("Found Printavo customer with ID:", customerId);
