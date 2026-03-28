@@ -11,7 +11,7 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 export async function sendStoreResumeSummary(storeName: string) {
 
     //----------------------------------
-    // GET LAST STORE
+    // GET STORE
     //----------------------------------
 
     const { data: store } = await supabase
@@ -27,6 +27,13 @@ export async function sendStoreResumeSummary(storeName: string) {
     const startISO = store.created_at;
     const endISO = new Date().toISOString();
 
+    const formattedStart = new Date(startISO)
+        .toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+        });
+
     //----------------------------------
     // FETCH ORDERS
     //----------------------------------
@@ -39,30 +46,97 @@ export async function sendStoreResumeSummary(storeName: string) {
         .lte("ordered_at", endISO);
 
     //----------------------------------
+    // FETCH ITEMS
+    //----------------------------------
+
+    const { data: items } = await supabase
+        .from("order_items")
+        .select("*")
+        .gte("created_at", startISO)
+        .lte("created_at", endISO);
+
+    //----------------------------------
+    // SUMMARY
+    //----------------------------------
+
+    const totalOrders = orders?.length || 0;
+
+    const totalRevenue =
+        orders?.reduce((sum, o) =>
+            sum + Number(o.price_paid || 0), 0) || 0;
+
+    const totalItems =
+        items?.reduce((sum, i) =>
+            sum + i.quantity, 0) || 0;
+
+    const displayStoreName = storeName
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, l => l.toUpperCase());
+
+    //----------------------------------
+    // HTML
+    //----------------------------------
+
+    const html = `
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; padding: 30px 15px; background: #f9fafb; min-height: 100vh;">
+<div style="max-width:600px;margin:0 auto">
+
+<div style="text-align:center;margin-bottom:30px">
+
+<div style="display:inline-block;background:#fef3c7;color:#92400e;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:700">
+Store Resumed
+</div>
+
+<h1 style="margin:10px 0 6px 0">
+${displayStoreName}
+</h1>
+
+<p style="color:#6b7280">
+${formattedStart} → Now
+</p>
+
+</div>
+
+<table style="width:100%;border-spacing:10px">
+
+<tr>
+
+<td style="background:#fff;padding:20px;border-radius:10px;text-align:center">
+<p>Total Orders</p>
+<h2>${totalOrders}</h2>
+</td>
+
+<td style="background:#fff;padding:20px;border-radius:10px;text-align:center">
+<p>Total Revenue</p>
+<h2>$${totalRevenue.toFixed(2)}</h2>
+</td>
+
+<td style="background:#fff;padding:20px;border-radius:10px;text-align:center">
+<p>Items Sold</p>
+<h2>${totalItems}</h2>
+</td>
+
+</tr>
+
+</table>
+
+<div style="margin-top:40px;text-align:center;color:#9ca3af">
+Automated report by AurixLab
+</div>
+
+</div>
+</div>
+`;
+
+    //----------------------------------
     // SEND EMAIL
     //----------------------------------
 
     await resend.emails.send({
-
-        from: "AurixLab Automation <onboarding@resend.dev>",
-
+        from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
         to: "0168mehrab@gmail.com",
-
-        subject: `Store Resume Summary — ${storeName}`,
-
-        html: `
-      <h1>🟡 Store Resume Summary</h1>
-      <p>${storeName}</p>
-
-      <p>Orders So Far: ${orders?.length || 0}</p>
-
-      <p>
-        ${new Date(startISO).toLocaleDateString()} 
-        →
-        Now
-      </p>
-    `
-
+        subject: `Store Resume Summary — ${displayStoreName}`,
+        html
     });
 
 }

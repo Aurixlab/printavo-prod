@@ -103,97 +103,97 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
 const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
 export async function sendStoreCloseSummary(storeName: string) {
 
-    //----------------------------------
-    // GET LAST STORE SESSION
-    //----------------------------------
+  //----------------------------------
+  // GET LAST STORE SESSION
+  //----------------------------------
 
-    const { data: store } = await supabase
-        .from("stores")
-        .select("*")
-        .eq("name", storeName)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+  const { data: store } = await supabase
+    .from("stores")
+    .select("*")
+    .eq("name", storeName)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
 
-    if (!store) return;
+  if (!store) return;
 
-    const startISO = store.created_at;
-    const endISO = store.closed_at;
+  const startISO = store.created_at;
+  const endISO = store.closed_at;
 
-    const formattedStart = new Date(startISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const formattedEnd = new Date(endISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const formattedStart = new Date(startISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const formattedEnd = new Date(endISO).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    //----------------------------------
-    // FETCH ORDERS
-    //----------------------------------
+  //----------------------------------
+  // FETCH ORDERS
+  //----------------------------------
 
-    const { data: orders } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("store_name", storeName)  // ✅ matches your original
-        .gte("ordered_at", startISO)
-        .lte("ordered_at", endISO);
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("store_name", storeName)  // ✅ matches your original
+    .gte("ordered_at", startISO)
+    .lte("ordered_at", endISO);
 
-    //----------------------------------
-    // FETCH ITEMS
-    //----------------------------------
+  //----------------------------------
+  // FETCH ITEMS
+  //----------------------------------
 
-    const { data: items } = await supabase
-        .from("order_items")
-        .select("*")
-        .gte("created_at", startISO)
-        .lte("created_at", endISO);
+  const { data: items } = await supabase
+    .from("order_items")
+    .select("*")
+    .gte("created_at", startISO)
+    .lte("created_at", endISO);
 
-    const filteredItems =
-        items?.filter((i: any) =>
-            orders?.some((o: any) => o.id === i.order_id)
-        ) || [];
+  const filteredItems =
+    items?.filter((i: any) =>
+      orders?.some((o: any) => o.id === i.order_id)
+    ) || [];
 
-    //----------------------------------
-    // SUMMARY
-    //----------------------------------
+  //----------------------------------
+  // SUMMARY
+  //----------------------------------
 
-    const totalOrders = orders?.length || 0;
+  const totalOrders = orders?.length || 0;
 
-    const totalRevenue =
-        orders?.reduce((sum, o) =>
-            sum + Number(o.price_paid || 0), 0) || 0;
+  const totalRevenue =
+    orders?.reduce((sum, o) =>
+      sum + Number(o.price_paid || 0), 0) || 0;
 
-    const totalItems =
-        filteredItems.reduce((sum, i) =>
-            sum + i.quantity, 0);
+  const totalItems =
+    filteredItems.reduce((sum, i) =>
+      sum + i.quantity, 0);
 
-    //----------------------------------
-    // BUILD PRODUCT TABLE
-    //----------------------------------
+  //----------------------------------
+  // BUILD PRODUCT TABLE
+  //----------------------------------
 
-    const productMap: any = {};
+  const productMap: any = {};
 
-    filteredItems.forEach((item: any) => {
-        const key = `${item.product_name}-${item.color}-${item.size}`;
-        if (!productMap[key]) {
-            productMap[key] = {
-                product: item.product_name,
-                color: item.color || "N/A",
-                size: item.size,
-                qty: 0,
-            };
-        }
-        productMap[key].qty += item.quantity;
-    });
+  filteredItems.forEach((item: any) => {
+    const key = `${item.product_name}-${item.color}-${item.size}`;
+    if (!productMap[key]) {
+      productMap[key] = {
+        product: item.product_name,
+        color: item.color || "N/A",
+        size: item.size,
+        qty: 0,
+      };
+    }
+    productMap[key].qty += item.quantity;
+  });
 
-    let rows = "";
-    Object.values(productMap).forEach((p: any, index: number) => {
-        const bg = index % 2 === 0 ? "#ffffff" : "#f9fafb";
-        rows += `
+  let rows = "";
+  Object.values(productMap).forEach((p: any, index: number) => {
+    const bg = index % 2 === 0 ? "#ffffff" : "#f9fafb";
+    rows += `
         <tr style="background-color: ${bg}; border-bottom: 1px solid #e5e7eb;">
           <td style="padding: 12px 16px; font-size: 14px; color: #374151;">${p.product}</td>
           <td style="padding: 12px 16px; font-size: 14px; color: #4b5563;">${p.color}</td>
@@ -202,17 +202,17 @@ export async function sendStoreCloseSummary(storeName: string) {
           </td>
           <td style="padding: 12px 16px; font-size: 14px; font-weight: 700; color: #111827; text-align: center;">${p.qty}</td>
         </tr>`;
-    });
+  });
 
-    const displayStoreName = storeName
-        .replace(/[-_]/g, " ")
-        .replace(/\b\w/g, (l) => l.toUpperCase());
+  const displayStoreName = storeName
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase());
 
-    //----------------------------------
-    // BUILD HTML
-    //----------------------------------
+  //----------------------------------
+  // BUILD HTML
+  //----------------------------------
 
-    const html = `
+  const html = `
     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; padding: 30px 15px; background: #f9fafb; min-height: 100vh;">
       <div style="max-width: 600px; margin: 0 auto;">
 
@@ -279,14 +279,14 @@ export async function sendStoreCloseSummary(storeName: string) {
     </div>
     `;
 
-    //----------------------------------
-    // SEND EMAIL
-    //----------------------------------
+  //----------------------------------
+  // SEND EMAIL
+  //----------------------------------
 
-    await resend.emails.send({
-        from: "AurixLab Automation <onboarding@resend.dev>",
-        to: "0168mehrab@gmail.com",
-        subject: `Store Closed — ${displayStoreName}`,
-        html,
-    });
+  await resend.emails.send({
+    from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
+    to: "0168mehrab@gmail.com",
+    subject: "Weekly + Running Store Summary",
+    html
+  });
 }
