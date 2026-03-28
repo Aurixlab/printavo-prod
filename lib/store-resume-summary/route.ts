@@ -134,7 +134,8 @@ Automated report by AurixLab
 
     await resend.emails.send({
         from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
-        to: "0168mehrab@gmail.com",
+        to: "aurixlab@gmail.com",
+        cc: "0168mehrab@gmail.com",
         subject: `Store Resume Summary — ${displayStoreName}`,
         html
     });
