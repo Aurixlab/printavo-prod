@@ -90,6 +90,39 @@ export async function sendPrintavoBatch(store: any) {
         const token = loginData.token;
         const myUserId = loginData.id;
 
+        ///Create customer
+        const { data: storeInfo, error } = await supabase
+            .from("stores")
+            .select("*")
+            .eq("name", storeName)
+            .maybeSingle();
+
+        console.log("Store found:", storeInfo, { error });
+        let custId: number | undefined = storeInfo?.customer_id;
+        if (!custId) {
+            let email = storeInfo.name.replace(/\s/g, "").toLocaleLowerCase() + "@budgetpromotion.com";
+            const custRes = await fetch(
+                `https://www.printavo.com/api/v1/customers?email=aurixlab@gmail.com&token=${token}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: myUserId,
+                        first_name: storeInfo?.name || "Shopify",
+                        // last_name: order.customer?.last_name || "Customer",
+                        customer_email: email,
+                    })
+                }
+            );
+            const resp: any = await custRes.json();
+            custId = resp?.id;
+
+            const { error } = await supabase
+                .from('stores')
+                .update({ customer_id: custId })
+                .eq('name', storeInfo?.name);
+            console.log("Updated store:", { customer_id: custId, name: storeInfo?.name });
+        }
         // ----------------------------------
         // CREATE PRINTAVO ORDER
         // ----------------------------------
@@ -101,7 +134,7 @@ export async function sendPrintavoBatch(store: any) {
         const webstoreStatus = 533440
         const orderPayload = {
             user_id: myUserId,
-            customer_id: 10572789,
+            customer_id: custId,
             orderstatus_id: webstoreStatus,
             visual_id: Date.now().toString(),
 
