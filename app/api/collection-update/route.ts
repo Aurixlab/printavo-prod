@@ -75,12 +75,13 @@ export async function POST(req: NextRequest) {
                 .limit(1)
                 .single();
 
-            if (lastStore) {
+            if (lastStore && lastStore.latest_status !== "resume") {
                 await supabase
                     .from("stores")
                     .update({
                         is_active: true,
                         closed_at: null,
+                        latest_status: "resume",
                     })
                     .eq("id", lastStore.id);
                 await sendStoreResumeSummary(storeName);
@@ -98,12 +99,13 @@ export async function POST(req: NextRequest) {
                 .limit(1)
                 .single();
 
-            if (lastStore) {
+            if (lastStore && lastStore.latest_status !== "closed") {
                 await supabase
                     .from("stores")
                     .update({
                         is_active: false,
                         closed_at: new Date().toISOString(),
+                        latest_status: "closed",
                     })
                     .eq("id", lastStore.id);
                 await sendPrintavoBatch(lastStore);
@@ -146,7 +148,8 @@ export async function POST(req: NextRequest) {
                     name: storeName,
                     created_at: new Date().toISOString(),
                     is_active: true,
-                    closed_at: null
+                    closed_at: null,
+                    latest_status: "open",
                 });
 
             if (error) {
