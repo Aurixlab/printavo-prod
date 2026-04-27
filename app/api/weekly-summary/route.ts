@@ -677,7 +677,7 @@ Automated by AurixLab
     await resend.emails.send({
       from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
       to: "aurixlab@gmail.com",
-      cc: "0168mehrab@gmail.com",
+      // cc: "0168mehrab@gmail.com",
       subject: "Budget Promotions Webstores Weekly + Running Store Summary",
       html
     });
