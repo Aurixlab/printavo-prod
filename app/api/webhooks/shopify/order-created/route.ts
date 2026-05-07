@@ -446,8 +446,13 @@ export async function POST(req: NextRequest) {
 
             if (!groupedItems[groupKey]) {
 
-                groupedItems[groupKey] = {
-                    style_description: item.title,
+                const imageDetailsProp = item.properties?.find((p: any) => p.name === "_image_details");
+                const imageDetails = imageDetailsProp?.value || "";
+
+            groupedItems[groupKey] = {
+                    style_description: imageDetails
+                        ? `${item.title}\n---\n${imageDetails}`
+                        : item.title,
                     unit_cost: parseFloat(item.price),
                     color: color,
 
