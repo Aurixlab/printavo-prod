@@ -61,6 +61,73 @@ function extractVariant(item: any) {
 }
 
 // ----------------------------------
+// SAME DAY PICKUP PRINTAVO MAPPING
+// ----------------------------------
+
+const SAME_DAY_PRODUCT_STYLE_NUMBERS: Record<string, string> = {
+    "PULLOVER HOODIE": "ATCF2500",
+    "COTTON T-SHIRT": "ATC1000"
+};
+
+const DIGITAL_INK_TRANSFER_CATEGORY = "Digital Ink Transfer";
+const SAME_DAY_NICKNAME = "SD**";
+
+function getSameDayStyleNumber(item: any) {
+
+    const productTitle = (item.title || "").trim().toUpperCase();
+
+    return SAME_DAY_PRODUCT_STYLE_NUMBERS[productTitle] || null;
+
+}
+
+async function getPrintavoCategoryId(token: string) {
+
+    const categoryRes = await fetch("https://www.printavo.com/api/v2", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            email: "aurixlab@gmail.com",
+            token
+        },
+        body: JSON.stringify({
+            query: `
+                query {
+                    account {
+                        categories(first: 100) {
+                            nodes {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
+            `
+        })
+    });
+
+    if (!categoryRes.ok) {
+        throw new Error(`Unable to retrieve Printavo categories (${categoryRes.status})`);
+    }
+
+    const categoryData: any = await categoryRes.json();
+
+    if (categoryData.errors?.length) {
+        throw new Error(`Unable to retrieve Printavo categories: ${categoryData.errors[0].message}`);
+    }
+
+    const category = categoryData.data?.account?.categories?.nodes?.find(
+        (item: any) => item.name?.trim().toLowerCase() === DIGITAL_INK_TRANSFER_CATEGORY.toLowerCase()
+    );
+
+    if (!category?.id) {
+        throw new Error(`Printavo category \"${DIGITAL_INK_TRANSFER_CATEGORY}\" was not found`);
+    }
+
+    return category.id;
+
+}
+
+// ----------------------------------
 // WEBHOOK
 // ----------------------------------
 
@@ -344,6 +411,10 @@ export async function POST(req: NextRequest) {
         const token = loginData.token;
         const myUserId = loginData.id;
 
+        if (!token || !myUserId) {
+            throw new Error("Printavo login did not return a token and user ID");
+        }
+
         // ----------------------------------
         // FIND CUSTOMER
         // ----------------------------------
@@ -432,6 +503,13 @@ export async function POST(req: NextRequest) {
         // ----------------------------------
 
         const groupedItems: Record<string, any> = {};
+        const sameDayStyleNumbers = order.line_items
+            .map((item: any) => getSameDayStyleNumber(item))
+            .filter(Boolean);
+        const isSameDayOrder = sameDayStyleNumbers.length > 0;
+        const digitalInkTransferCategoryId = isSameDayOrder
+            ? await getPrintavoCategoryId(token)
+            : null;
 
         order.line_items.forEach((item: any) => {
 
@@ -448,13 +526,20 @@ export async function POST(req: NextRequest) {
 
                 const imageDetailsProp = item.properties?.find((p: any) => p.name === "_image_details");
                 const imageDetails = imageDetailsProp?.value || "";
+                const sameDayStyleNumber = getSameDayStyleNumber(item);
 
-            groupedItems[groupKey] = {
+                groupedItems[groupKey] = {
                     style_description: imageDetails
                         ? `${item.title}\n---\n${imageDetails}`
                         : item.title,
                     unit_cost: parseFloat(item.price),
                     color: color,
+                    ...(sameDayStyleNumber
+                        ? {
+                            style_number: sameDayStyleNumber,
+                            category_id: digitalInkTransferCategoryId
+                        }
+                        : {}),
 
                     size_xs: 0,
                     size_s: 0,
@@ -513,6 +598,7 @@ export async function POST(req: NextRequest) {
             formatted_customer_due_date: formattedDueDate,
 
             notes: `Budget Promotion Shopify Order #${order.order_number}`,
+            ...(isSameDayOrder ? { order_nickname: SAME_DAY_NICKNAME } : {}),
             order_addresses_attributes: [
                 {
                     name: customerName || "Shopify Customer",
