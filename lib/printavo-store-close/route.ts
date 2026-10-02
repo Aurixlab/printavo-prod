@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
+import { emptySizeFields, printavoSizeField } from "@/lib/webstore-routing";
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -55,21 +56,17 @@ export async function sendPrintavoBatch(store: any) {
                     style_description: item.product_name,
                     unit_cost: parseFloat(item.price),
                     color: item.color,
-                    size_s: 0,
-                    size_m: 0,
-                    size_l: 0,
-                    size_xl: 0,
-                    size_2xl: 0
+                    ...emptySizeFields()
                 };
             }
 
-            switch (item.size) {
-                case "S": grouped[key].size_s += item.quantity; break;
-                case "M": grouped[key].size_m += item.quantity; break;
-                case "L": grouped[key].size_l += item.quantity; break;
-                case "XL": grouped[key].size_xl += item.quantity; break;
-                case "2XL":
-                case "XXL": grouped[key].size_2xl += item.quantity; break;
+            // XS and 3XL+ used to be dropped from the batch (only S-2XL were
+            // counted), so those orders never reached Printavo.
+            const sizeField = printavoSizeField(item.size);
+            if (sizeField) {
+                grouped[key][sizeField] += item.quantity;
+            } else {
+                console.warn(`Batch: size "${item.size}" has no Printavo field (order_item ${item.id}, ${item.product_name})`);
             }
         }
 

@@ -4,6 +4,13 @@ import crypto from "crypto";
 import fetch from "node-fetch";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+    CollectionInfo,
+    isWebstoreTemplate,
+    parseWebstoreType,
+    pickCollection,
+    routeOrder
+} from "@/lib/webstore-routing";
 
 // ----------------------------------
 // SUPABASE
@@ -181,10 +188,10 @@ export async function POST(req: NextRequest) {
         const collectData: any = await collectRes.json();
         console.log("Collects raw response:", JSON.stringify(collectData, null, 2));
 
-        const collectionId = collectData.collects?.[0]?.collection_id;
-        console.log("Resolved collection ID:", collectionId);
+        const collectionIds: number[] = (collectData.collects || []).map((c: any) => c.collection_id);
+        console.log("Collection IDs for product:", collectionIds);
 
-        if (!collectionId) {
+        if (!collectionIds.length) {
             console.warn("⚠️ No collection ID found for product:", productId);
             console.warn("This means the product is either:");
             console.warn("  1. Not in any collection");
@@ -192,52 +199,50 @@ export async function POST(req: NextRequest) {
         }
 
         // ----------------------------------
-        // STEP 2: TRY CUSTOM COLLECTION
+        // STEP 2: READ EACH COLLECTION'S TEMPLATE
+        // A product can be in several collections; the webstore one decides
+        // the route, so stop as soon as it is found (see lib/webstore-routing).
         // ----------------------------------
 
         let templateSuffix: string | null = null;
         let storeStatus: string | null = null;
         let storeName: string | null = null;
+        let webstoreType: string | null = null;
+
+        const collections: CollectionInfo[] = [];
+
+        for (const id of collectionIds) {
+
+            const customRes = await fetch(
+                `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/custom_collections/${id}.json`,
+                { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
+            );
+            const customData: any = customRes.ok ? await customRes.json() : {};
+            let suffix: string | null = customData.custom_collection?.template_suffix ?? null;
+
+            // STEP 3: FALLBACK TO SMART COLLECTION
+            if (!customData.custom_collection) {
+                const smartRes = await fetch(
+                    `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/smart_collections/${id}.json`,
+                    { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! } }
+                );
+                const smartData: any = smartRes.ok ? await smartRes.json() : {};
+                suffix = smartData.smart_collection?.template_suffix ?? null;
+            }
+
+            console.log(`Collection ${id} template suffix:`, suffix);
+            collections.push({ id, templateSuffix: suffix });
+            if (isWebstoreTemplate(suffix)) break;
+        }
+
+        const chosenCollection = pickCollection(collections);
+        const collectionId = chosenCollection?.id;
+        templateSuffix = chosenCollection?.templateSuffix ?? null;
+        console.log("Resolved collection ID:", collectionId);
 
         if (collectionId) {
 
-            const customUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/custom_collections/${collectionId}.json`;
-            const smartUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/smart_collections/${collectionId}.json`;
             const metaUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/collections/${collectionId}/metafields.json`;
-
-            console.log("Fetching custom collection:", customUrl);
-
-            const customRes = await fetch(customUrl, {
-                headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
-            });
-
-            console.log("Custom collection status:", customRes.status);
-            const customData: any = await customRes.json();
-            console.log("Custom collection response:", JSON.stringify(customData, null, 2));
-
-            // ----------------------------------
-            // STEP 3: FALLBACK TO SMART COLLECTION
-            // ----------------------------------
-
-            if (customRes.status === 404 || !customData.custom_collection) {
-
-                console.log("Not a custom collection, trying smart collection...");
-
-                const smartRes = await fetch(smartUrl, {
-                    headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN! }
-                });
-
-                console.log("Smart collection status:", smartRes.status);
-                const smartData: any = await smartRes.json();
-                console.log("Smart collection response:", JSON.stringify(smartData, null, 2));
-
-                templateSuffix = smartData.smart_collection?.template_suffix ?? null;
-
-            } else {
-
-                templateSuffix = customData.custom_collection?.template_suffix ?? null;
-
-            }
 
             // ----------------------------------
             // STEP 4: GET METAFIELDS
@@ -261,11 +266,19 @@ export async function POST(req: NextRequest) {
                 (m: any) => m.namespace === "custom" && m.key === "store_name"
             )?.value ?? null;
 
+            webstoreType = metaData.metafields?.find(
+                (m: any) => m.namespace === "custom" && m.key === "webstore_type"
+            )?.value ?? null;
+
         }
+
+        const route = routeOrder(templateSuffix, webstoreType);
 
         console.log("=== COLLECTION DEBUG RESULT ===");
         console.log("Template suffix:", templateSuffix);
         console.log("Store name:", storeName);
+        console.log("Webstore type:", isWebstoreTemplate(templateSuffix) ? parseWebstoreType(webstoreType) : "n/a (not a webstore)");
+        console.log("Route:", route);
         console.log("=== COLLECTION DEBUG END ===");
 
         // ----------------------------------
@@ -286,7 +299,9 @@ export async function POST(req: NextRequest) {
             ?.toLowerCase()
             .replace(/\s+/g, "-");
 
-        if (templateSuffix?.toLowerCase() === "webstore") {
+        // Bulk webstore: save for the batch sent when the store closes.
+        // On-demand webstores fall through to the instant Printavo order below.
+        if (route === "webstore_batch") {
             // ----------------------------------
             // INSERT Store
             // ----------------------------------
@@ -388,7 +403,11 @@ export async function POST(req: NextRequest) {
 
 
 
-        console.log("Budget promotion order detected → sending to Printavo");
+        const isOnDemandWebstore = isWebstoreTemplate(templateSuffix);
+
+        console.log(isOnDemandWebstore
+            ? `On-demand webstore order (${storeName}) → sending to Printavo`
+            : "Budget promotion order detected → sending to Printavo");
 
         // ----------------------------------
         // LOGIN TO PRINTAVO
@@ -430,7 +449,11 @@ export async function POST(req: NextRequest) {
         let customerId = searchData.data?.find(
             (c: any) => c.email?.toLowerCase() === shopifyEmail
         )?.id;
-        const addressSource = order.billing_address || order.shipping_address
+        // On-demand webstore orders are shipped, so Printavo must get the
+        // ship-to address. Every other order keeps billing first, as before.
+        const addressSource = isOnDemandWebstore
+            ? (order.shipping_address || order.billing_address)
+            : (order.billing_address || order.shipping_address)
         if (!customerId) {
 
             const custRes = await fetch(
@@ -597,7 +620,9 @@ export async function POST(req: NextRequest) {
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
 
-            notes: `Budget Promotion Shopify Order #${order.order_number}`,
+            notes: isOnDemandWebstore
+                ? `Webstore: ${storeName || "Unnamed webstore"} - Shopify Order #${order.order_number}`
+                : `Budget Promotion Shopify Order #${order.order_number}`,
             ...(isSameDayOrder ? { order_nickname: SAME_DAY_NICKNAME } : {}),
             order_addresses_attributes: [
                 {
