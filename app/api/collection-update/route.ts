@@ -65,6 +65,14 @@ export async function POST(req: NextRequest) {
 
         console.log("Store status:", storeStatus);
         console.log("Store name:", storeName);
+
+        // Most collections (regular ones, and on-demand webstores) have no
+        // store status. Answer 200 instead of crashing on null: a 500 makes
+        // Shopify retry, and repeated failures can get this webhook removed.
+        if (!storeStatus) {
+            return NextResponse.json({ skipped: true, reason: "no store_status" });
+        }
+
         if (storeStatus.toLowerCase() === "resume") {
 
             const { data: lastStore } = await supabase
