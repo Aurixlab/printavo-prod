@@ -449,7 +449,11 @@ export async function POST(req: NextRequest) {
         let customerId = searchData.data?.find(
             (c: any) => c.email?.toLowerCase() === shopifyEmail
         )?.id;
-        const addressSource = order.billing_address || order.shipping_address
+        // On-demand webstore orders are shipped, so Printavo must get the
+        // ship-to address. Every other order keeps billing first, as before.
+        const addressSource = isOnDemandWebstore
+            ? (order.shipping_address || order.billing_address)
+            : (order.billing_address || order.shipping_address)
         if (!customerId) {
 
             const custRes = await fetch(
