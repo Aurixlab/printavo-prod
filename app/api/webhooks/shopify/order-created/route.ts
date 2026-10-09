@@ -12,6 +12,7 @@ import {
     routeOrder
 } from "@/lib/webstore-routing";
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
+import { onDemandDueDate, parseClosedDays } from "@/lib/webstore-due-date";
 
 // ----------------------------------
 // SUPABASE
@@ -521,7 +522,12 @@ export async function POST(req: NextRequest) {
             if (nextDay === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
         }
 
-        const formattedDueDate = deliveryDate.toLocaleDateString("en-US");
+        // Regular and Same Day orders use the rule above. On-demand webstore
+        // orders are due 2 days after ordering, or 3 when ordered on a weekend
+        // or Alberta holiday (lib/webstore-due-date).
+        const formattedDueDate = isOnDemandWebstore
+            ? onDemandDueDate(new Date(), parseClosedDays(process.env.CLOSED_DAYS)).formatted
+            : deliveryDate.toLocaleDateString("en-US");
         // ----------------------------------
         // GROUP ITEMS FOR PRINTAVO
         // ----------------------------------
@@ -623,7 +629,12 @@ export async function POST(req: NextRequest) {
         const QUOTE_STATUS_ID = 22634;  // Quote
 
         const isRush = order.shipping_lines?.some((s: any) => s.title.includes("Calgary Location"));
-        const finalStatusId = isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID;
+        // On-demand webstore orders never take the RUSH (pickup) status; they use
+        // the same Webstore status as bulk batches (lib/printavo-store-close).
+        const WEBSTORE_STATUS_ID = 533440;
+        const finalStatusId = isOnDemandWebstore
+            ? WEBSTORE_STATUS_ID
+            : (isRush ? RUSH_STATUS_ID : QUOTE_STATUS_ID);
         // ----------------------------------
         // CREATE PRINTAVO ORDER
         // ----------------------------------
