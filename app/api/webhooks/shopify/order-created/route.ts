@@ -11,6 +11,7 @@ import {
     pickCollection,
     routeOrder
 } from "@/lib/webstore-routing";
+import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
 
 // ----------------------------------
 // SUPABASE
@@ -526,6 +527,9 @@ export async function POST(req: NextRequest) {
         // ----------------------------------
 
         const groupedItems: Record<string, any> = {};
+        // Shopify product/variant behind each line item group, for the
+        // webstore artwork lookup below
+        const groupSource: Record<string, { productId: any; variantId: any }> = {};
         const sameDayStyleNumbers = order.line_items
             .map((item: any) => getSameDayStyleNumber(item))
             .filter(Boolean);
@@ -547,6 +551,7 @@ export async function POST(req: NextRequest) {
 
             if (!groupedItems[groupKey]) {
 
+                groupSource[groupKey] = { productId: item.product_id, variantId: item.variant_id };
                 const imageDetailsProp = item.properties?.find((p: any) => p.name === "_image_details");
                 const imageDetails = imageDetailsProp?.value || "";
                 const sameDayStyleNumber = getSameDayStyleNumber(item);
@@ -598,6 +603,19 @@ export async function POST(req: NextRequest) {
 
         });
 
+        // On-demand webstore orders: add the colour's artwork, item # and
+        // category (lib/webstore-enrich). Regular and Same Day orders skip this.
+        if (isOnDemandWebstore) {
+            const enrichCache = newEnrichCache();
+            for (const [key, src] of Object.entries(groupSource)) {
+                const extras = await webstoreLineExtras(
+                    { productId: src.productId, variantId: src.variantId },
+                    token,
+                    enrichCache
+                );
+                applyExtras(groupedItems[key], extras);
+            }
+        }
 
         const lineitems_attributes = Object.values(groupedItems);
         // Status IDs from your printed list
