@@ -523,8 +523,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Regular and Same Day orders use the rule above. On-demand webstore
-        // orders are due 2 days after ordering, or 3 when ordered on a weekend
-        // or Alberta holiday (lib/webstore-due-date).
+        // orders are due 1 day after ordering (lib/webstore-due-date).
         const formattedDueDate = isOnDemandWebstore
             ? onDemandDueDate(new Date(), parseClosedDays(process.env.CLOSED_DAYS)).formatted
             : deliveryDate.toLocaleDateString("en-US");

@@ -1,10 +1,12 @@
 // Due date for ON-DEMAND webstore orders in Printavo.
 //
-//   Order placed on a working day           -> due 2 days later
-//   Order placed on a weekend or a holiday  -> due 3 days later
+//   Due 1 day after the order, every day of the week (Oct 2026: shipping
+//   takes time on top, so the shorter lead time is used).
 //
-// Example: Fri Oct 9 2026 -> Sun Oct 11; Sat Oct 10 -> Tue Oct 13;
-// Mon Oct 12 (Thanksgiving) -> Thu Oct 15.
+// Example: Fri Oct 9 2026 -> Sat Oct 10; Mon Oct 12 (Thanksgiving) -> Oct 13.
+//
+// Weekends and holidays are still detected: to give orders placed on a
+// closed day a different lead time, change DAYS_IF_CLOSED below.
 //
 // Days are Calgary days (America/Edmonton). Holidays are Alberta's general
 // holidays; shop-specific closures can be added with the CLOSED_DAYS env var
@@ -76,10 +78,14 @@ export function isClosedDay(day: Date, extraClosed: string[] = []): boolean {
     return dow === 0 || dow === 6 || albertaHolidays(day.getUTCFullYear()).has(key) || extraClosed.includes(key);
 }
 
+/** Days from the order day to the due date. */
+export const DAYS_IF_OPEN = 1;
+export const DAYS_IF_CLOSED = 1; // order placed on a weekend / Alberta holiday / CLOSED_DAYS
+
 /** Due date for an on-demand webstore order placed at `now`. */
 export function onDemandDueDate(now: Date, extraClosed: string[] = []) {
     const today = calgaryToday(now);
-    const daysAdded = isClosedDay(today, extraClosed) ? 3 : 2;
+    const daysAdded = isClosedDay(today, extraClosed) ? DAYS_IF_CLOSED : DAYS_IF_OPEN;
     const due = new Date(today);
     due.setUTCDate(due.getUTCDate() + daysAdded);
     return {
