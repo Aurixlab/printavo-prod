@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
 import { emptySizeFields, printavoSizeField } from "@/lib/webstore-routing";
+import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -48,10 +49,13 @@ export async function sendPrintavoBatch(store: any) {
         // AGGREGATE ITEMS
         // ----------------------------------
         const grouped: Record<string, any> = {};
+        // Shopify product + colour behind each group, for the artwork lookup
+        const groupSource: Record<string, { productId: any; colorText: string }> = {};
 
         for (const item of storeOrders) {
             const key = `${item.product_id}-${item.color}`;
             if (!grouped[key]) {
+                groupSource[key] = { productId: item.product_id, colorText: item.color };
                 grouped[key] = {
                     style_description: item.product_name,
                     unit_cost: parseFloat(item.price),
@@ -86,6 +90,14 @@ export async function sendPrintavoBatch(store: any) {
         const loginData: any = await loginRes.json();
         const token = loginData.token;
         const myUserId = loginData.id;
+
+        // Artwork, item # and category per product + colour (lib/webstore-enrich).
+        // Failures are logged and the batch still goes out without them.
+        const enrichCache = newEnrichCache();
+        for (const [key, src] of Object.entries(groupSource)) {
+            const extras = await webstoreLineExtras({ productId: src.productId, colorText: src.colorText }, token, enrichCache);
+            applyExtras(grouped[key], extras);
+        }
 
         ///Create customer
         const { data: storeInfo, error } = await supabase
