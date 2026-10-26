@@ -347,6 +347,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { isAuthorizedCron } from "@/lib/request-auth";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -355,7 +356,10 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-export async function GET() {
+export async function GET(req: Request) {
+  if (!isAuthorizedCron(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
 
     //----------------------------------

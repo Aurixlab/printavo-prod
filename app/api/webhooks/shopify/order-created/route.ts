@@ -1,6 +1,5 @@
 
 
-import crypto from "crypto";
 import fetch from "node-fetch";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -12,6 +11,7 @@ import {
     routeOrder
 } from "@/lib/webstore-routing";
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
+import { verifyShopifyHmac } from "@/lib/request-auth";
 import { onDemandDueDate, parseClosedDays } from "@/lib/webstore-due-date";
 
 // ----------------------------------
@@ -146,12 +146,7 @@ export async function POST(req: NextRequest) {
 
     const hmacHeader = req.headers.get("x-shopify-hmac-sha256") || "";
 
-    const generatedHash = crypto
-        .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET!)
-        .update(rawBody, "utf8")
-        .digest("base64");
-
-    if (generatedHash !== hmacHeader) {
+    if (!verifyShopifyHmac(rawBody, hmacHeader, process.env.SHOPIFY_WEBHOOK_SECRET)) {
 
         console.error("Invalid webhook signature");
 
@@ -173,7 +168,6 @@ export async function POST(req: NextRequest) {
         console.log("Product ID:", productId);
         console.log("SHOPIFY_SHOP_DOMAIN:", process.env.SHOPIFY_SHOP_DOMAIN);
         console.log("SHOPIFY_ADMIN_TOKEN exists:", !!process.env.SHOPIFY_ADMIN_TOKEN);
-        console.log("SHOPIFY_ADMIN_TOKEN prefix:", process.env.SHOPIFY_ADMIN_TOKEN?.slice(0, 10));
 
         // ----------------------------------
         // STEP 1: GET COLLECTION ID

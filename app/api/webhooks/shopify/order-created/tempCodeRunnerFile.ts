@@ -11,8 +11,8 @@
 // const { createClient } = require("@supabase/supabase-js");
 
 // const supabase = createClient(
-//     "https://qcbnpgctowjclxtalsmj.supabase.co",
-//     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjYm5wZ2N0b3dqY2x4dGFsc21qIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzE0NDE2MSwiZXhwIjoyMDg4NzIwMTYxfQ._hm3Gb9a7uDQbuK00g_akkTjq3XUw8PCGJ5qkctSvuk"
+//     process.env.SUPABASE_URL,
+//     process.env.SUPABASE_SERVICE_ROLE_KEY
 // );
 
 // async function test() {

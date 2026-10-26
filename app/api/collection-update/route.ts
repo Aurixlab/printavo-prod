@@ -1,9 +1,9 @@
-import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendStoreCloseSummary } from "../../../lib/store-close-summary/route";
 import { sendStoreResumeSummary } from "../../../lib/store-resume-summary/route";
 import { sendPrintavoBatch } from "@/lib/printavo-store-close/route";
+import { verifyShopifyHmac } from "@/lib/request-auth";
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -17,12 +17,7 @@ export async function POST(req: NextRequest) {
         const rawBody = await req.text();
         const hmac = req.headers.get("x-shopify-hmac-sha256") || "";
 
-        const hash = crypto
-            .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET!)
-            .update(rawBody, "utf8")
-            .digest("base64");
-
-        if (hash !== hmac) {
+        if (!verifyShopifyHmac(rawBody, hmac, process.env.SHOPIFY_WEBHOOK_SECRET)) {
             return new NextResponse("Unauthorized", { status: 401 });
         }
 

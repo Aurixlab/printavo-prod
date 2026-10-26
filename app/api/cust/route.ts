@@ -1,7 +1,11 @@
 import { supabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
+import { isAuthorizedCron } from "@/lib/request-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
+    if (!isAuthorizedCron(req)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     try {
         // ----------------------------------
         // LOGIN TO PRINTAVO
@@ -27,7 +31,7 @@ export async function GET() {
         const myUserId = loginData.id;
         if (!token) {
             return NextResponse.json(
-                { error: "Login failed", loginData },
+                { error: "Login failed" },
                 { status: 500 }
             );
         }
@@ -125,8 +129,7 @@ export async function GET() {
 
         return NextResponse.json(
             {
-                error: "Internal Server Error",
-                message: error.message
+                error: "Internal Server Error"
             },
             { status: 500 }
         );
