@@ -101,6 +101,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { customizationKey, customizationLabel, rowCustomization } from "@/lib/webstore-customization";
+
+// Custom text is typed by shoppers, so it is escaped before it goes into the email
+function escapeHtml(value: unknown) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -178,10 +184,15 @@ export async function sendStoreCloseSummary(storeName: string) {
   const productMap: any = {};
 
   filteredItems.forEach((item: any) => {
-    const key = `${item.product_name}-${item.color}-${item.size}`;
+    // Personalized items get their own row showing what to print (lib/webstore-customization)
+    const customization = rowCustomization(item);
+    const customKey = customizationKey(customization);
+    const key = `${item.product_name}-${item.color}-${item.size}${customKey ? `-${customKey}` : ""}`;
     if (!productMap[key]) {
       productMap[key] = {
-        product: item.product_name,
+        product: customKey
+          ? `${escapeHtml(item.product_name)}<br><span style="font-size: 12px; color: #6b7280;">${escapeHtml(customizationLabel(customization))}</span>`
+          : item.product_name,
         color: item.color || "N/A",
         size: item.size,
         qty: 0,
