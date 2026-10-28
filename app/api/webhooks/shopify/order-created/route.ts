@@ -13,6 +13,13 @@ import {
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
 import { verifyShopifyHmac } from "@/lib/request-auth";
 import { onDemandDueDate, parseClosedDays } from "@/lib/webstore-due-date";
+import {
+    customizationColumns,
+    customizationKey,
+    customizationLabel,
+    isCustomizationValue,
+    lineCustomization
+} from "@/lib/webstore-customization";
 
 // ----------------------------------
 // SUPABASE
@@ -40,6 +47,9 @@ function extractVariant(item: any) {
 
             const val = opt.toUpperCase().trim();
 
+            // A personalized product's "Customization" value is neither (lib/webstore-customization)
+            if (isCustomizationValue(val)) continue;
+
             if (sizes.includes(val)) {
                 console.log(`Identified size: ${val} from variant options`);
                 size = val;
@@ -58,6 +68,7 @@ function extractVariant(item: any) {
 
         for (const p of parts) {
 
+            if (isCustomizationValue(p)) continue;
             if (sizes.includes(p)) size = p;
             else if (!p.includes("DESIGN")) color = p;
 
@@ -368,6 +379,8 @@ export async function POST(req: NextRequest) {
             for (const item of order.line_items) {
 
                 const { size, color } = extractVariant(item);
+                // Personalized lines also save what to print; plain lines keep the old row shape
+                const customization = lineCustomization(item);
 
                 const { error: itemError } = await supabase
                     .from("order_items")
@@ -380,7 +393,8 @@ export async function POST(req: NextRequest) {
                             color,
                             size,
                             quantity: item.quantity,
-                            price: item.price
+                            price: item.price,
+                            ...customizationColumns(customization)
                         },
                         { onConflict: "shopify_line_item_id" }
                     );
@@ -546,7 +560,13 @@ export async function POST(req: NextRequest) {
             const size = parts[1] || "";
             const qty = Number(item.quantity);
 
-            const groupKey = `${item.product_id}-${color}`;
+            // Personalized items get their own line with what to print on them
+            // (lib/webstore-customization); plain items group exactly as before.
+            const customization = lineCustomization(item);
+            const customKey = customizationKey(customization);
+            const groupKey = customKey
+                ? `${item.product_id}-${color}-${customKey}`
+                : `${item.product_id}-${color}`;
 
             if (!groupedItems[groupKey]) {
 
@@ -554,11 +574,14 @@ export async function POST(req: NextRequest) {
                 const imageDetailsProp = item.properties?.find((p: any) => p.name === "_image_details");
                 const imageDetails = imageDetailsProp?.value || "";
                 const sameDayStyleNumber = getSameDayStyleNumber(item);
+                const title = customKey
+                    ? `${item.title}\n${customizationLabel(customization)}`
+                    : item.title;
 
                 groupedItems[groupKey] = {
                     style_description: imageDetails
-                        ? `${item.title}\n---\n${imageDetails}`
-                        : item.title,
+                        ? `${title}\n---\n${imageDetails}`
+                        : title,
                     unit_cost: parseFloat(item.price),
                     color: color,
                     ...(sameDayStyleNumber

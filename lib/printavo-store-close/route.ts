@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
 import { emptySizeFields, printavoSizeField } from "@/lib/webstore-routing";
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
+import { customizationKey, customizationLabel, rowCustomization } from "@/lib/webstore-customization";
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -53,11 +54,19 @@ export async function sendPrintavoBatch(store: any) {
         const groupSource: Record<string, { productId: any; colorText: string }> = {};
 
         for (const item of storeOrders) {
-            const key = `${item.product_id}-${item.color}`;
+            // Personalized items get their own line with what to print on them
+            // (lib/webstore-customization); plain items group exactly as before.
+            const customization = rowCustomization(item);
+            const customKey = customizationKey(customization);
+            const key = customKey
+                ? `${item.product_id}-${item.color}-${customKey}`
+                : `${item.product_id}-${item.color}`;
             if (!grouped[key]) {
                 groupSource[key] = { productId: item.product_id, colorText: item.color };
                 grouped[key] = {
-                    style_description: item.product_name,
+                    style_description: customKey
+                        ? `${item.product_name}\n${customizationLabel(customization)}`
+                        : item.product_name,
                     unit_cost: parseFloat(item.price),
                     color: item.color,
                     ...emptySizeFields()
