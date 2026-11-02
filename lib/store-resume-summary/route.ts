@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { NORMAL_MAIL_TO } from "@/lib/mail-recipients";
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -134,7 +135,7 @@ Automated report by AurixLab
 
     await resend.emails.send({
         from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
-        to: "aurixlab@gmail.com",
+        to: NORMAL_MAIL_TO,
         // cc: "0168mehrab@gmail.com",
         subject: `Store Resume Summary — ${displayStoreName}`,
         html

@@ -101,6 +101,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { NORMAL_MAIL_TO } from "@/lib/mail-recipients";
 import { customizationKey, customizationLabel, rowCustomization } from "@/lib/webstore-customization";
 import { buildCustomers } from "@/lib/store-close-details";
 import { fetchShopifyOrders } from "@/lib/store-close-shopify";
@@ -332,7 +333,7 @@ export async function sendStoreCloseSummary(storeName: string) {
 
   await resend.emails.send({
     from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
-    to: "aurixlab@gmail.com",
+    to: NORMAL_MAIL_TO,
     // cc: "0168mehrab@gmail.com",
     subject: `Store Closed Summary — ${displayStoreName}`,
     html

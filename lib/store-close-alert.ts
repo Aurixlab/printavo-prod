@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { ERROR_MAIL_TO } from "@/lib/mail-recipients";
 
 // Sent when closing a store did not reach Printavo. The store stays open so setting the
 // status to "closed" again retries it; nothing is lost.
@@ -8,7 +9,7 @@ export async function sendStoreCloseFailure(storeName: string, error: unknown) {
         const text = typeof error === "string" ? error : (error as any)?.message || JSON.stringify(error);
         await resend.emails.send({
             from: "AurixLab Webstore Automation <webstores@aurixlab.com>",
-            to: "aurixlab@gmail.com",
+            to: ERROR_MAIL_TO,   // errors go to AurixLab only
             subject: `Store NOT closed: ${storeName} (Printavo did not accept the order)`,
             html: `
               <div style="font-family: Arial, sans-serif; max-width: 640px;">
