@@ -3,7 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { sendStoreCloseSummary } from "../../../lib/store-close-summary/route";
 import { sendStoreResumeSummary } from "../../../lib/store-resume-summary/route";
 import { sendPrintavoBatch } from "@/lib/printavo-store-close/route";
+import { sendStoreCloseFailure } from "@/lib/store-close-alert";
 import { verifyShopifyHmac } from "@/lib/request-auth";
+// Closing a store reads orders, calls Shopify and Printavo, then sends emails
+export const maxDuration = 60;
+
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -102,17 +106,41 @@ export async function POST(req: NextRequest) {
                 .limit(1)
                 .single();
 
-            if (lastStore && lastStore.latest_status !== "closed") {
+            if (lastStore && lastStore.latest_status !== "closed" && lastStore.latest_status !== "closing") {
+                // Claim the close first so a repeated webhook cannot send a second Printavo order.
+                // The store stays active until Printavo has accepted the order.
+                const closedAt = new Date().toISOString();
                 await supabase
                     .from("stores")
-                    .update({
-                        is_active: false,
-                        closed_at: new Date().toISOString(),
-                        latest_status: "closed",
-                    })
+                    .update({ latest_status: "closing" })
                     .eq("id", lastStore.id);
-                await sendPrintavoBatch(lastStore);
-                await sendStoreCloseSummary(storeName);
+
+                let batch: any;
+                try {
+                    batch = await sendPrintavoBatch(lastStore, closedAt);
+                } catch (e) {
+                    batch = { success: false, error: e };   // never leave the store stuck on "closing"
+                }
+
+                if (batch?.success || batch?.skipped) {
+                    await supabase
+                        .from("stores")
+                        .update({
+                            is_active: false,
+                            closed_at: closedAt,
+                            latest_status: "closed",
+                        })
+                        .eq("id", lastStore.id);
+                    await sendStoreCloseSummary(storeName);
+                } else {
+                    // Printavo did not take it: keep the store open (previous status), tell the owner,
+                    // and let "closed" be set again to retry. No orders are lost.
+                    await supabase
+                        .from("stores")
+                        .update({ latest_status: lastStore.latest_status ?? "open" })
+                        .eq("id", lastStore.id);
+                    await sendStoreCloseFailure(storeName, batch?.error ?? "Unknown error");
+                }
             }
         }
         else if (storeStatus.toLowerCase() === "open") {
