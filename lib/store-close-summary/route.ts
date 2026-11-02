@@ -102,6 +102,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { customizationKey, customizationLabel, rowCustomization } from "@/lib/webstore-customization";
+import { buildCustomers } from "@/lib/store-close-details";
+import { fetchShopifyOrders } from "@/lib/store-close-shopify";
 
 // Custom text is typed by shoppers, so it is escaped before it goes into the email
 function escapeHtml(value: unknown) {
@@ -215,6 +217,38 @@ export async function sendStoreCloseSummary(storeName: string) {
         </tr>`;
   });
 
+  //----------------------------------
+  // CUSTOMER LIST: one row per order, so nobody is missed (the same list goes into the Printavo order notes)
+  //----------------------------------
+  let customersHtml = "";
+  try {
+    const shopifyById = await fetchShopifyOrders((orders || []).map((o: any) => o.shopify_order_id));
+    const customers = buildCustomers(orders || [], filteredItems, shopifyById, { customizationLabel, rowCustomization });
+    const cell = "padding: 10px 14px; font-size: 13px; color: #374151; vertical-align: top; border-bottom: 1px solid #e5e7eb;";
+    const customerRows = customers.map((c, i) => `
+        <tr style="background-color: ${c.cancelled ? "#fef2f2" : i % 2 === 0 ? "#ffffff" : "#f9fafb"};">
+          <td style="${cell}">#${escapeHtml(c.orderNumber)}${c.cancelled ? '<br><span style="color:#b91c1c;font-size:11px;">CANCELLED, not sent to Printavo</span>' : ""}</td>
+          <td style="${cell}"><strong>${escapeHtml(c.name || "(no name)")}</strong><br>${escapeHtml(c.email)}<br>${escapeHtml(c.phone)}<br><span style="color:#6b7280;">${escapeHtml(c.delivery)}</span></td>
+          <td style="${cell}">${c.items.map((t) => escapeHtml(t)).join("<br>")}${c.note ? `<br><em style="color:#6b7280;">Note: ${escapeHtml(c.note)}</em>` : ""}</td>
+        </tr>`).join("");
+    if (customers.length) {
+      customersHtml = `
+        <div style="margin-top: 32px;">
+          <h3 style="font-size: 16px; color: #111827; margin: 0 0 12px;">Customers (${customers.length} orders)</h3>
+          <div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e5e7eb;">
+            <thead><tr style="background: #f3f4f6;">
+              <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280;">Order</th>
+              <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280;">Customer</th>
+              <th style="padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280;">Items</th>
+            </tr></thead>
+            <tbody>${customerRows}</tbody>
+          </table></div>
+        </div>`;
+    }
+  } catch (err) {
+    console.error("Store close summary: could not build the customer list:", err);
+  }
+
   const displayStoreName = storeName
     .replace(/[-_]/g, " ")
     .replace(/\b\w/g, (l) => l.toUpperCase());
@@ -278,6 +312,8 @@ export async function sendStoreCloseSummary(storeName: string) {
             </table>
           </div>
         </div>
+
+        ${customersHtml}
 
         <!-- Footer -->
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">

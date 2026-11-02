@@ -3,83 +3,94 @@ import fetch from "node-fetch";
 import { emptySizeFields, printavoSizeField } from "@/lib/webstore-routing";
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
 import { customizationKey, customizationLabel, rowCustomization } from "@/lib/webstore-customization";
+import { buildCustomers, formatCustomerNotes, groupBatchLines } from "@/lib/store-close-details";
+import { fetchShopifyOrders } from "@/lib/store-close-shopify";
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function sendPrintavoBatch(store: any) {
+const groupDeps = { printavoSizeField, emptySizeFields, rowCustomization, customizationKey, customizationLabel };
+
+/**
+ * Sends ONE Printavo order for the whole store session: one line per product + colour + price,
+ * and the order notes list every customer (name, email, phone, delivery, items).
+ * `closedAt` is the moment the store was closed; orders after it are not part of this batch.
+ */
+export async function sendPrintavoBatch(store: any, closedAt?: string) {
     const storeName = store.name;
 
     try {
-        const now = new Date().toISOString();
+        const now = closedAt || new Date().toISOString();
         // ----------------------------------
-        // FETCH ALL ORDER ITEMS DURING ACTIVE PERIOD
+        // FETCH ALL ORDERS + ITEMS DURING THE ACTIVE PERIOD
         // ----------------------------------
-        // 1️⃣ Get all orders for this store during active period
         const { data: storeOrderList, error: orderError } = await supabase
             .from("orders")
-            .select("id")
+            .select("*")
             .eq("store_name", storeName)
             .gte("created_at", store.created_at)
-            .lte("created_at", now); // use current timestamp instead of null
+            .lte("created_at", now);
         if (orderError) throw orderError;
 
-        const orderIds = storeOrderList?.map(o => o.id) || [];
+        const allOrders = storeOrderList || [];
 
-        if (orderIds.length === 0) {
+        if (allOrders.length === 0) {
             console.log("No orders found for store:", storeName);
             return { skipped: true };
         }
 
-        // 2️⃣ Fetch all order items for those orders
-        const { data: storeOrders, error: itemsError } = await supabase
+        const { data: allItems, error: itemsError } = await supabase
             .from("order_items")
             .select("*")
-            .in("order_id", orderIds);
+            .in("order_id", allOrders.map(o => o.id));
 
         if (itemsError) throw itemsError;
 
-        if (!storeOrders || storeOrders.length === 0) {
+        if (!allItems || allItems.length === 0) {
             console.log("No orders found for store:", storeName);
             return { skipped: true };
         }
 
         // ----------------------------------
-        // AGGREGATE ITEMS
+        // CUSTOMER DETAILS FROM SHOPIFY (falls back to the database's if Shopify is unreachable)
         // ----------------------------------
+        const shopifyById = await fetchShopifyOrders(allOrders.map(o => o.shopify_order_id));
+        const everyone = buildCustomers(allOrders, allItems, shopifyById, groupDeps);
+        // An order cancelled in Shopify must not be printed
+        const cancelledNumbers = new Set(everyone.filter(c => c.cancelled).map(c => String(c.orderNumber)));
+        const customers = everyone.filter(c => !c.cancelled);
+        const excluded = everyone.filter(c => c.cancelled);
+        const keepOrderIds = new Set(allOrders.filter(o => !cancelledNumbers.has(String(o.order_number))).map(o => String(o.id)));
+        const storeOrders = allItems.filter(i => keepOrderIds.has(String(i.order_id)));
+
+        if (storeOrders.length === 0) {
+            console.log("Every order of this store was cancelled:", storeName);
+            return { skipped: true };
+        }
+
+        // ----------------------------------
+        // AGGREGATE ITEMS: product + colour + price (+ personalization)
+        // ----------------------------------
+        const lines = groupBatchLines(storeOrders, groupDeps);
         const grouped: Record<string, any> = {};
-        // Shopify product + colour behind each group, for the artwork lookup
+        // Shopify product + colour behind each line, for the artwork lookup
         const groupSource: Record<string, { productId: any; colorText: string }> = {};
+        const unmapped: string[] = [];
 
-        for (const item of storeOrders) {
-            // Personalized items get their own line with what to print on them
-            // (lib/webstore-customization); plain items group exactly as before.
-            const customization = rowCustomization(item);
-            const customKey = customizationKey(customization);
-            const key = customKey
-                ? `${item.product_id}-${item.color}-${customKey}`
-                : `${item.product_id}-${item.color}`;
-            if (!grouped[key]) {
-                groupSource[key] = { productId: item.product_id, colorText: item.color };
-                grouped[key] = {
-                    style_description: customKey
-                        ? `${item.product_name}\n${customizationLabel(customization)}`
-                        : item.product_name,
-                    unit_cost: parseFloat(item.price),
-                    color: item.color,
-                    ...emptySizeFields()
-                };
-            }
-
-            // XS and 3XL+ used to be dropped from the batch (only S-2XL were
-            // counted), so those orders never reached Printavo.
-            const sizeField = printavoSizeField(item.size);
-            if (sizeField) {
-                grouped[key][sizeField] += item.quantity;
-            } else {
-                console.warn(`Batch: size "${item.size}" has no Printavo field (order_item ${item.id}, ${item.product_name})`);
+        for (const line of lines) {
+            groupSource[line.key] = { productId: line.product_id, colorText: line.color };
+            grouped[line.key] = {
+                style_description: line.description,
+                unit_cost: line.unit_cost,
+                color: line.color,
+                ...line.sizes
+            };
+            for (const u of line.unmapped) {
+                // A size Printavo has no field for is reported in the notes instead of being dropped
+                unmapped.push(`${line.description.split("\n")[0]} / ${line.color}: ${u}`);
+                console.warn(`Batch: size "${u}" has no Printavo field (${line.description})`);
             }
         }
 
@@ -99,6 +110,9 @@ export async function sendPrintavoBatch(store: any) {
         const loginData: any = await loginRes.json();
         const token = loginData.token;
         const myUserId = loginData.id;
+        if (!token || !myUserId) {
+            throw new Error("Printavo login did not return a token and user ID");
+        }
 
         // Artwork, item # and category per product + colour (lib/webstore-enrich).
         // Failures are logged and the batch still goes out without them.
@@ -150,6 +164,8 @@ export async function sendPrintavoBatch(store: any) {
         calgaryNow.setDate(calgaryNow.getDate() + 1);
         const formattedDueDate = calgaryNow.toLocaleDateString("en-US");
         const webstoreStatus = 533440
+        let notes = formatCustomerNotes(storeName, customers, excluded);
+        if (unmapped.length) notes += `\n\nSIZES PRINTAVO HAS NO FIELD FOR (add by hand): ${unmapped.join("; ")}`;
         const orderPayload = {
             user_id: myUserId,
             customer_id: custId,
@@ -159,7 +175,7 @@ export async function sendPrintavoBatch(store: any) {
             formatted_due_date: formattedDueDate,
             formatted_customer_due_date: formattedDueDate,
 
-            notes: `Batch Shopify Orders for store ${storeName}`,
+            notes,
 
             lineitems_attributes
         };
@@ -180,7 +196,7 @@ export async function sendPrintavoBatch(store: any) {
         }
 
         console.log("Printavo batch order created for stores:", storeName);
-        return { success: true };
+        return { success: true, orders: customers.length, lines: lineitems_attributes.length };
 
     } catch (err) {
         console.error("Error sending Printavo batch:", err);
