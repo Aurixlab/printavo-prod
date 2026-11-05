@@ -51,18 +51,26 @@ export function pickCollection(collections: CollectionInfo[]): CollectionInfo | 
     return collections.find(c => isWebstoreTemplate(c.templateSuffix)) ?? collections[0];
 }
 
+/** Size labels a webstore variant can carry (upper case). Youth sizes are "Youth XS".."Youth XL". */
+export const WEBSTORE_SIZES = [
+    "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL", "5XL", "6XL",
+    "YOUTH XS", "YOUTH S", "YOUTH M", "YOUTH L", "YOUTH XL"
+];
+
 /** Printavo v1 line item size field for a size label, or null if Printavo has no field for it. */
 export function printavoSizeField(size: unknown): string | null {
     const s = String(size ?? "").trim().toUpperCase();
     const map: Record<string, string> = {
         XS: "size_xs", S: "size_s", M: "size_m", L: "size_l", XL: "size_xl",
         "2XL": "size_2xl", XXL: "size_2xl", "3XL": "size_3xl", "4XL": "size_4xl",
-        "5XL": "size_5xl", "6XL": "size_6xl"
+        "5XL": "size_5xl", "6XL": "size_6xl",
+        "YOUTH XS": "size_yxs", "YOUTH S": "size_ys", "YOUTH M": "size_ym",
+        "YOUTH L": "size_yl", "YOUTH XL": "size_yxl"
     };
     return map[s] ?? null;
 }
 
-/** Every size field, all at 0, for a new Printavo line item. */
+/** Every adult size field, all at 0, for a new Printavo line item. Youth fields are added only when a youth size is ordered. */
 export function emptySizeFields(): Record<string, number> {
     return {
         size_xs: 0, size_s: 0, size_m: 0, size_l: 0, size_xl: 0,

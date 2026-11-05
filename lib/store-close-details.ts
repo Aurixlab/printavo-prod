@@ -62,7 +62,7 @@ export function groupBatchLines(items: any[], deps: GroupDeps): BatchLine[] {
             lines.set(key, line);
         }
         const field = deps.printavoSizeField(item.size);
-        if (field) line.sizes[field] += Number(item.quantity) || 0;
+        if (field) line.sizes[field] = (line.sizes[field] || 0) + (Number(item.quantity) || 0);
         else line.unmapped.push(`${item.size} x${item.quantity}`);
     }
     return Array.from(lines.values());
