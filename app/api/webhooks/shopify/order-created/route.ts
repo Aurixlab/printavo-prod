@@ -8,7 +8,8 @@ import {
     isWebstoreTemplate,
     parseWebstoreType,
     pickCollection,
-    routeOrder
+    routeOrder,
+    WEBSTORE_SIZES
 } from "@/lib/webstore-routing";
 import { applyExtras, newEnrichCache, webstoreLineExtras } from "@/lib/webstore-enrich";
 import { verifyShopifyHmac } from "@/lib/request-auth";
@@ -36,7 +37,7 @@ const supabase = createClient(
 
 function extractVariant(item: any) {
 
-    const sizes = ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL", "5XL"];
+    const sizes = WEBSTORE_SIZES;
 
     let size = "UNKNOWN";
     let color = "N/A";
